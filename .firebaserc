@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "dietica-be3e3"
-  }
+    "default": "dietica-be3e3",
+    "staging": "dietica-be3e3"
+  },
+  "targets": {},
+  "etags": {}
 }
