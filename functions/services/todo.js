@@ -12,7 +12,7 @@ exports.getTodo = onCall(async () => {
 
   // TODO where authId
   const todo = await db.collection("UserTodo")
-      .orderBy("createdAt")
+      .orderBy("createdAt", "desc")
       .limit(1)
       .get();
   if (todo && todo.docs.length <= 0) {

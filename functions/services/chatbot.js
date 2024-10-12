@@ -11,7 +11,7 @@ exports.getChatbot = onCall(async () => {
 
   // TODO where authId
   const chatLogs = await db.collection("UserChatLog")
-      .orderBy("repliedAt")
+      .orderBy("repliedAt", "desc")
       .limit(5)
       .get();
   if (chatLogs) {
@@ -41,7 +41,7 @@ exports.sendChatbot = onCall(async (request) => {
 
   // TODO where authId
   const chatLogs = await db.collection("UserChatLog")
-      .orderBy("repliedAt")
+      .orderBy("repliedAt", "desc")
       .limit(5)
       .get();
   if (chatLogs) {
