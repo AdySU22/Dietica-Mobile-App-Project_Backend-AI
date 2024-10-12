@@ -3,7 +3,31 @@ const {db} = require("../core/firestore");
 const {model} = require("../core/model");
 const logger = require("firebase-functions/logger");
 
-exports.chatbot = onCall(async (request) => {
+exports.getChatbot = onCall(async () => {
+  // TODO enable auth
+  // if (!request.auth) {
+  //   throw new HttpsError("unauthenticated", "User not authenticated");
+  // }
+
+  // TODO where authId
+  const chatLogs = await db.collection("UserChatLog")
+      .orderBy("repliedAt")
+      .limit(5)
+      .get();
+  if (chatLogs) {
+    chatLogs.forEach((chatLog) => {
+      logger.info(chatLog.data());
+    });
+  }
+
+  return chatLogs.docs.map((chatLog) => ({
+    message: chatLog.data().message,
+    reply: chatLog.data().reply,
+    repliedAt: chatLog.data().repliedAt,
+  }));
+});
+
+exports.sendChatbot = onCall(async (request) => {
   const message = request.data.message;
 
   if (!message || typeof message !== "string") {
