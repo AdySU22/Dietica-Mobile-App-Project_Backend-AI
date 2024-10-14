@@ -67,3 +67,6 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# firebase admin
+dietica-be3e3-firebase-adminsdk-za8xl-bbb90ceca2.json

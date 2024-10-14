@@ -3,7 +3,6 @@ const admin = require('firebase-admin');
 const nodemailer = require('nodemailer'); 
 const serviceAccount = require('../../dietica-be3e3-firebase-adminsdk-za8xl-bbb90ceca2.json'); 
 require('dotenv').config();
-const nodemailer = require('nodemailer');
 
 // Initialize the Firebase Admin SDK
 admin.initializeApp({
