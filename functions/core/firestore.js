@@ -3,4 +3,7 @@ const {getFirestore} = require("firebase-admin/firestore");
 
 initializeApp();
 
-exports.db = getFirestore();
+const db = getFirestore();
+db.settings({ignoreUndefinedProperties: true});
+
+exports.db = db;

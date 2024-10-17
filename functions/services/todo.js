@@ -155,24 +155,38 @@ function getUserTargetPrompt(userTarget) {
  */
 function getFoodLogsPrompt(foodLogs) {
   const foodSummary = foodLogs.docs.reduce((summary, foodLog) => {
-    const currentLogDate = foodLog.data().createdAt.toDate().getDate();
+    const foodData = foodLog.data();
+    const currentLogDate = foodData.createdAt.toDate().getDate();
     const lastLogDate = summary.length > 0 ?
         summary[summary.length - 1].createdAt.toDate().getDate() :
         null;
+
     if (summary.length > 0 && currentLogDate === lastLogDate) {
-      summary[summary.length - 1].calories += foodLog.data().calories;
-      summary[summary.length - 1].carbs += foodLog.data().carbs;
-      summary[summary.length - 1].protein += foodLog.data().protein;
-      summary[summary.length - 1].fats += foodLog.data().fats;
-      summary[summary.length - 1].sugar += foodLog.data().sugar;
+      summary[summary.length - 1].calories += foodData.calories;
+      summary[summary.length - 1].fat += foodData.fat;
+      summary[summary.length - 1].saturatedFat += foodData.saturatedFat;
+      summary[summary.length - 1].unsaturatedFat += foodData.unsaturatedFat;
+      summary[summary.length - 1].transFat += foodData.transFat;
+      summary[summary.length - 1].cholestrol += foodData.cholestrol;
+      summary[summary.length - 1].sodium += foodData.sodium;
+      summary[summary.length - 1].carbs += foodData.carbs;
+      summary[summary.length - 1].protein += foodData.protein;
+      summary[summary.length - 1].sugar += foodData.sugar;
+      summary[summary.length - 1].fiber += foodData.fiber;
     } else {
       summary.push({
-        createdAt: foodLog.data().createdAt,
-        calories: foodLog.data().calories,
-        carbs: foodLog.data().carbs,
-        protein: foodLog.data().protein,
-        fats: foodLog.data().fats,
-        sugar: foodLog.data().sugar,
+        createdAt: foodData.createdAt,
+        calories: foodData.calories,
+        fat: foodData.fat,
+        saturatedFat: foodData.saturatedFat,
+        unsaturatedFat: foodData.unsaturatedFat,
+        transFat: foodData.transFat,
+        cholestrol: foodData.cholestrol,
+        sodium: foodData.sodium,
+        carbs: foodData.carbs,
+        protein: foodData.protein,
+        sugar: foodData.sugar,
+        fiber: foodData.fiber,
       });
     }
     return summary;
@@ -182,10 +196,16 @@ function getFoodLogsPrompt(foodLogs) {
     const date = foodLog.createdAt.toDate();
     return `Date: ${date.getDate()} ${date.getMonth() + 1}\n` +
         `Calories: ${foodLog.calories}; ` +
+        `Fat: ${foodLog.fat}g; ` +
+        `Saturated Fat: ${foodLog.saturatedFat}g; ` +
+        `Unsaturated Fat: ${foodLog.unsaturatedFat}g; ` +
+        `Trans Fat: ${foodLog.transFat}g; ` +
+        `Cholesterol: ${foodLog.cholestrol}mg; ` +
+        `Sodium: ${foodLog.sodium}mg; ` +
         `Carbs: ${foodLog.carbs}g; ` +
         `Protein: ${foodLog.protein}g; ` +
-        `Fats: ${foodLog.fats}g; ` +
-        `Sugar: ${foodLog.sugar}g`;
+        `Sugar: ${foodLog.sugar}g; ` +
+        `Fiber: ${foodLog.fiber}g`;
   }).join("\n");
 }
 
