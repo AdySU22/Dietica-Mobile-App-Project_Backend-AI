@@ -2,7 +2,7 @@ const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {db} = require("../core/firestore");
 
 exports.getAllFood = onCall(async (req) => {
-  const {uid, page, limit} = req.query;
+  const {uid, page, limit} = req.data;
 
   const foods = await db.collection("FoodLog")
       .where("authId", "==", uid)
@@ -11,11 +11,14 @@ exports.getAllFood = onCall(async (req) => {
       .limit(limit)
       .get();
 
-  return foods.docs.map((food) => food.data());
+  return foods.docs.map((food) => ({
+    id: food.id,
+    ...food.data(),
+  }));
 });
 
 exports.getFood = onCall(async (req) => {
-  const {uid, foodId} = req.query;
+  const {uid, foodId} = req.data;
 
   const foodDocRef = db.collection("FoodLog").doc(foodId);
   const foodDoc = await foodDocRef.get();
@@ -24,7 +27,10 @@ exports.getFood = onCall(async (req) => {
     throw new HttpsError("not-found", "Food not found");
   }
 
-  return foodDoc.data();
+  return {
+    id: foodDoc.id,
+    ...foodDoc.data(),
+  };
 });
 
 exports.createFood = onCall(async (req) => {
