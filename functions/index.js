@@ -1,6 +1,7 @@
 const {onCall} = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const {homeFoodTodaySummary} = require("./services/home");
+const {getReport} = require("./services/report");
 const {
   getAllFood,
   getFood,
@@ -13,13 +14,14 @@ const {getChatbot, sendChatbot} = require("./services/chatbot");
 const {generateTodo, getTodo} = require("./services/todo");
 const {setUserTarget, getUserTarget} = require("./services/userTarget");
 
-
 exports.helloWorld = onCall((request) => {
   logger.info("Hello logs!", {structuredData: true});
   return "Hello from Firebase!";
 });
 
 exports.homeFoodTodaySummary = homeFoodTodaySummary;
+
+exports.getReport = getReport;
 
 exports.getAllFood = getAllFood;
 exports.getFood = getFood;
