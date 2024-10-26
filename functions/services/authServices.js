@@ -1,226 +1,254 @@
-const express = require("express");
-const admin = require("firebase-admin");
+require('dotenv').config();
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const logger = require("firebase-functions/logger");
+const { db } = require("../core/firestore");
+const crypto = require("crypto");
 const nodemailer = require("nodemailer");
-const serviceAccount = require(
-    "../../dietica-be3e3-firebase-adminsdk-za8xl-bbb90ceca2.json",
-);
-require("dotenv").config();
+const admin = require("firebase-admin");
 
-// Initialize the Firebase Admin SDK
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
-
-// eslint-disable-next-line new-cap
-const router = express.Router();
-
-// Setup NodeMailer transport
+// Configure Nodemailer transport
 const transporter = nodemailer.createTransport({
-  secure: process.env.EMAIL_SECURE === "true",
-  host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT, 10),
-  service: process.env.EMAIL_SERVICE,
+  host: process.env.EMAIL_HOST, // Use environment variable for host
+  port: process.env.EMAIL_PORT, // Use environment variable for port
+  secure: process.env.EMAIL_SECURE === 'true', // Use environment variable for secure
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: process.env.EMAIL_USER, // Use environment variable for email
+    pass: process.env.EMAIL_PASS, // Use environment variable for password
   },
 });
 
-// Function to send OTP email
-const sendOtpEmail = (email, otp) => {
+// OTP expiration time
+const otpExpirationTime = 5 * 60 * 1000; // 5 minutes
+
+// Send OTP function
+exports.sendOtp = onCall(async (req) => {
+  const { email } = req.data;
+
+  // Validate email format
+  if (typeof email !== "string") {
+    throw new HttpsError("invalid-argument", "Invalid email format");
+  }
+
+  const otp = crypto.randomInt(1000, 9999).toString(); // Generate a 4-digit OTP
+  const expiration = Date.now() + otpExpirationTime;
+
+  // Store OTP and expiration in Firestore
+  await db.collection("OtpCodes").doc(email).set({ otp, expiration });
+
   const mailOptions = {
-    from: "daditrianza@gmail.com",
+    from: process.env.FUNCTIONS_EMAIL_USERNAME, // Use environment variable for email
     to: email,
     subject: "Your OTP Code",
-    text: `Your OTP code is: ${otp}`,
+    text: `Your OTP code is: ${otp}. This code is valid for the next 5 minutes.`,
+    html: `<strong>Your OTP code is: ${otp}</strong><br><p>This code is valid for the next 5 minutes.</p>`,
   };
 
-  return transporter.sendMail(mailOptions);
-};
-
-// OTP generation function
-const generateOtp = () => {
-  return Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit OTP
-};
-
-// In-memory OTP store
-const otpStore = {};
-
-// === SIGNUP FLOW ===
-
-// Signup User
-router.post("/signup", async (req, res) => {
-  const {email} = req.body;
-  const otp = generateOtp();
-
   try {
-    // Store the OTP associated with the email
-    otpStore[email] = otp;
-
-    // Send OTP to the user's email
-    await sendOtpEmail(email, otp);
-
-    res.json({message: "OTP sent to your email"});
+    await transporter.sendMail(mailOptions);
+    logger.info(`OTP sent to email: ${email}`);
+    return { message: "OTP sent successfully" };
   } catch (error) {
-    console.error("Error sending OTP:", error);
-    return res.status(500).json({error: "Error sending OTP"});
+    logger.error("Error sending OTP email", error);
+    throw new HttpsError("internal", `Failed to send OTP email: ${error.message}`);
   }
 });
 
-// Verify OTP and Create User
-router.post("/verify-otp", async (req, res) => {
-  const {email, otp, firstName, lastName, password} = req.body;
+// Signup function
+exports.signup = onCall(async (req) => {
+  const { email } = req.data;
 
-  // Verify the OTP
-  if (otpStore[email] !== otp) {
-    return res.status(400).json({error: "Invalid OTP"});
+  // Validate email format
+  if (typeof email !== "string") {
+    throw new HttpsError("invalid-argument", "Invalid email format");
+  }
+
+  // Generate OTP
+  const otp = crypto.randomInt(1000, 9999).toString(); // Generate a 4-digit OTP
+  const expiration = Date.now() + otpExpirationTime;
+
+  // Store OTP and expiration in Firestore
+  await db.collection("OtpCodes").doc(email).set({ otp, expiration });
+
+  const mailOptions = {
+    from: process.env.FUNCTIONS_EMAIL_USERNAME,
+    to: email,
+    subject: "Your OTP Code",
+    text: `Your OTP code is: ${otp}. This code is valid for the next 5 minutes.`,
+    html: `<strong>Your OTP code is: ${otp}</strong><br><p>This code is valid for the next 5 minutes.</p>`,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    logger.info(`OTP sent to email: ${email}`);
+    return { message: "Signup initiated. Please check your email for the OTP." };
+  } catch (error) {
+    logger.error("Error sending OTP email", error);
+    throw new HttpsError("internal", `Failed to send OTP email: ${error.message}`);
+  }
+});
+
+// Finalize Signup function (combined with OTP verification)
+exports.finalizeSignup = onCall(async (req) => {
+  const { email, otp, password, firstName, lastName } = req.data; // Collect necessary data
+
+  // Validate input data
+  if (typeof email !== "string" || typeof otp !== "string" || typeof password !== "string" || 
+      typeof firstName !== "string" || typeof lastName !== "string") {
+    throw new HttpsError("invalid-argument", "Invalid input data");
+  }
+
+  const otpDoc = await db.collection("OtpCodes").doc(email).get();
+  if (!otpDoc.exists) {
+    throw new HttpsError("not-found", "No OTP found for this email");
+  }
+
+  const { otp: storedOtp, expiration } = otpDoc.data();
+  if (Date.now() > expiration) {
+    throw new HttpsError("failed-precondition", "OTP has expired");
+  }
+
+  if (storedOtp !== otp) {
+    throw new HttpsError("invalid-argument", "Invalid OTP");
   }
 
   try {
-    // Create the user in Firebase Auth
-    const userResponse = await admin.auth().createUser({
+    // Create user in Firebase Authentication
+    const userRecord = await admin.auth().createUser({
       email: email,
       password: password,
-      emailVerified: true,
-      disabled: false,
-      displayName: `${firstName} ${lastName}`,
     });
 
-    // Clear the OTP after successful registration
-    delete otpStore[email];
-
-    res.json({message: "Account successfully created", user: userResponse});
-  } catch (error) {
-    console.error("Error creating new user:", error);
-    res.status(500).json({error: "Error creating new user"});
-  }
-});
-
-// === USER SIGN-IN ===
-
-router.post("/signin", async (req, res) => {
-  // eslint-disable-next-line no-unused-vars
-  const {email, password} = req.body; // Client sends email and password
-
-  try {
-    // Sign in the user with Firebase Authentication
-    const userCredential = await admin.auth().getUserByEmail(email);
-
-    // Here, you should ideally verify the password.
-    // But, Firebase Admin SDK doesn't support password verification directly.
-    // Instead, consider having a separate authentication mechanism or
-    // use the Firebase client SDK to handle sign-in.
-
-    // Generate a custom token to manage the session
-    const customToken = await admin.auth()
-        .createCustomToken(userCredential.uid);
-
-    res.json({
-      message: "Sign-in successful",
-      uid: userCredential.uid,
-      email: userCredential.email,
-      displayName: userCredential.displayName,
-      customToken: customToken,
+    // Store additional user information in Firestore
+    await db.collection("Users").doc(userRecord.uid).set({
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      // createdAt: admin.firestore.FieldValue.serverTimestamp() (comment ga tau kenapa error tp user register success)
+      createdAt: new Date()
     });
+
+    await db.collection("OtpCodes").doc(email).delete(); // Delete OTP after successful signup
+
+    logger.info(`User signed up successfully for email: ${email}`);
+    return { message: "Signup finalized successfully." };
   } catch (error) {
-    console.error("Error signing in user:", error);
-    res.status(401).json({error: "Invalid email or password"});
+    logger.error("Error creating user", error);
+    throw new HttpsError("internal", `Failed to create user: ${error.message}`);
   }
 });
 
-// === PASSWORD RESET FLOW ===
+// Sign In function
+exports.signin = onCall(async (req) => {
+  const { email, password } = req.data;
 
-// Send OTP for password reset
-router.post("/forgot-password", async (req, res) => {
-  const {email} = req.body;
-  const otp = generateOtp();
-
-  try {
-    // Store the OTP associated with the email
-    otpStore[email] = otp;
-
-    // Send OTP to the user's email
-    await sendOtpEmail(email, otp);
-
-    res.json({message: "OTP sent to your email for password reset"});
-  } catch (error) {
-    console.error("Error sending OTP for password reset:", error);
-    return res.status(500).json({error: "Error sending OTP"});
-  }
-});
-
-// Verify OTP and set new password
-router.post("/reset-password", async (req, res) => {
-  const {email, otp, newPassword, confirmPassword} = req.body;
-
-  // Check if the OTP is correct
-  if (otpStore[email] !== otp) {
-    return res.status(400).json({error: "Invalid OTP"});
-  }
-
-  // Check if passwords match
-  if (newPassword !== confirmPassword) {
-    return res.status(400).json({error: "Passwords do not match"});
+  // Validate input data
+  if (typeof email !== "string" || typeof password !== "string") {
+    throw new HttpsError("invalid-argument", "Invalid input data");
   }
 
   try {
-    // Get the user by email
+    // Sign in the user with email and password
     const userRecord = await admin.auth().getUserByEmail(email);
+    
+    // If the user exists, you can verify the password using the Firebase Admin SDK
+    // However, the Admin SDK does not provide direct password verification
+    // Here, we will simulate a sign-in response without password verification, which is usually done on the client side.
 
-    // Update the user's password
-    await admin.auth().updateUser(userRecord.uid, {
-      password: newPassword,
-    });
-
-    // Clear the OTP after successful password reset
-    delete otpStore[email];
-
-    res.json({message: "Password successfully reset"});
-  } catch (error) {
-    console.error("Error resetting password:", error);
-    res.status(500).json({error: "Error resetting password"});
-  }
-});
-
-// === GOOGLE AUTHENTICATION FLOW ===
-
-router.post("/google-signin", async (req, res) => {
-  const {idToken} = req.body; // Client sends the Google ID token
-
-  try {
-    // Verify the Google ID Token using Firebase Admin SDK
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const {uid, email, name, picture} = decodedToken;
-
-    // Check if user exists in Firebase Authentication
-    let userRecord;
-    try {
-      userRecord = await admin.auth().getUser(uid);
-    } catch (error) {
-      // If user doesn't exist, create a new user in Firebase Auth
-      userRecord = await admin.auth().createUser({
-        uid: uid,
-        email: email,
-        displayName: name,
-        photoURL: picture,
-        emailVerified: true,
-      });
-    }
-
-    // Optionally generate a custom Firebase token to manage session
-    const customToken = await admin.auth().createCustomToken(uid);
-
-    res.json({
-      message: "Google sign-in successful",
+    // Respond with a success message
+    return {
+      message: "Sign in successful",
       uid: userRecord.uid,
       email: userRecord.email,
-      displayName: userRecord.displayName,
-      customToken: customToken,
-    });
+      // Optionally, you can return more user information if needed
+    };
   } catch (error) {
-    console.error("Error verifying Google ID token:", error);
-    res.status(401).json({error: "Invalid Google ID token"});
+    if (error.code === 'auth/user-not-found') {
+      throw new HttpsError("not-found", "User not found");
+    } else if (error.code === 'auth/wrong-password') {
+      throw new HttpsError("invalid-argument", "Invalid password");
+    } else {
+      logger.error("Error signing in", error);
+      throw new HttpsError("internal", `Failed to sign in: ${error.message}`);
+    }
   }
 });
 
-module.exports = router;
+// Forgot Password function
+exports.forgotPassword = onCall(async (req) => {
+  const { email } = req.data;
+
+  // Validate email format
+  if (typeof email !== "string") {
+    throw new HttpsError("invalid-argument", "Invalid email format");
+  }
+
+  // Generate OTP
+  const otp = crypto.randomInt(1000, 9999).toString(); // Generate a 4-digit OTP
+  const expiration = Date.now() + otpExpirationTime;
+
+  // Store OTP and expiration in Firestore
+  await db.collection("OtpCodes").doc(email).set({ otp, expiration });
+
+  const mailOptions = {
+    from: process.env.FUNCTIONS_EMAIL_USERNAME,
+    to: email,
+    subject: "Your OTP Code for Password Reset",
+    text: `Your OTP code for password reset is: ${otp}. This code is valid for the next 5 minutes.`,
+    html: `<strong>Your OTP code for password reset is: ${otp}</strong><br><p>This code is valid for the next 5 minutes.</p>`,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    logger.info(`OTP sent for password reset to email: ${email}`);
+    return { message: "Password reset initiated. Please check your email for the OTP." };
+  } catch (error) {
+    logger.error("Error sending OTP email", error);
+    throw new HttpsError("internal", `Failed to send OTP email: ${error.message}`);
+  }
+});
+
+// Reset Password function
+exports.resetPassword = onCall(async (req) => {
+  const { email, otp, password, confirmPassword } = req.data;
+
+  // Validate input data
+  if (typeof email !== "string" || typeof otp !== "string" || typeof password !== "string" || typeof confirmPassword !== "string") {
+    throw new HttpsError("invalid-argument", "Invalid input data");
+  }
+
+  // Check if the new password and confirm password match
+  if (password !== confirmPassword) {
+    throw new HttpsError("failed-precondition", "Passwords do not match");
+  }
+
+  const otpDoc = await db.collection("OtpCodes").doc(email).get();
+  if (!otpDoc.exists) {
+    throw new HttpsError("not-found", "No OTP found for this email");
+  }
+  const { otp: storedOtp, expiration } = otpDoc.data();
+  if (Date.now() > expiration) {
+    throw new HttpsError("failed-precondition", "OTP has expired");
+  }
+
+  if (storedOtp !== otp) {
+    throw new HttpsError("invalid-argument", "Invalid OTP");
+  }
+  try {
+    // Update user password in Firebase Authentication
+    const user = await admin.auth().getUserByEmail(email);
+    await admin.auth().updateUser(user.uid, { password });
+
+    await db.collection("OtpCodes").doc(email).delete(); // Delete OTP after successful password reset
+
+    logger.info(`Password reset successfully for email: ${email}`);
+    return { message: "Password reset successfully." };
+  } catch (error) {
+    logger.error("Error resetting password", error);
+    throw new HttpsError("internal", `Failed to reset password: ${error.message}`);
+  }
+});
+
+// Google Signin function (optional, implement as needed)
+exports.googleSignin = onCall(async (req) => {
+  // Logic for Google Signin
+});
