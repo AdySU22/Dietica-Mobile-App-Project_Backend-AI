@@ -13,6 +13,7 @@ const {fatsecretSearch, fatsecretGet} = require("./services/fatsecret");
 const {getChatbot, sendChatbot} = require("./services/chatbot");
 const {generateTodo, getTodo} = require("./services/todo");
 const {setUserTarget, getUserTarget} = require("./services/userTarget");
+const {setUserPhysical, getUserPhysical} = require("./services/userPhysical")
 
 exports.helloWorld = onCall((request) => {
   logger.info("Hello logs!", {structuredData: true});
@@ -40,3 +41,7 @@ exports.generateTodo = generateTodo;
 
 exports.setUserTarget = setUserTarget;
 exports.getUserTarget = getUserTarget;
+
+exports.setUserPhysical = setUserPhysical;
+exports.getUserPhysical = getUserPhysical;
+
