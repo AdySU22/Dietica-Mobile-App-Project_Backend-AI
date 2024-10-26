@@ -1,63 +1,66 @@
-const express = require("express");
-const admin = require("firebase-admin");
-// eslint-disable-next-line new-cap
-const router = express.Router();
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const logger = require("firebase-functions/logger");
+const { Timestamp } = require("firebase-admin/firestore");
+const {db} = require("../core/firestore");
 
-// === GET PROFILE ===
-router.get("/getProfile", async (req, res) => {
-  const {uid} = req.query; // Use req.query to get uid from query parameters
+// Get Profile function
+exports.getProfile = onCall(async (req) => {
+  const { authId } = req.data;
 
-  if (!uid) {
-    return res.status(400).json({error: "User ID (uid) is required"});
+  // Validate authId
+  if (typeof authId !== "string") {
+    throw new HttpsError("invalid-argument", "Invalid authId format");
   }
 
+  logger.info("Fetching user profile for authId:", authId); // Log authId
+
   try {
-    const userRecord = await admin.auth().getUser(uid);
-    res.json({
-      name: userRecord.displayName,
-      email: userRecord.email,
-      dateOfBirth: (userRecord.customClaims &&
-        userRecord.customClaims.dateOfBirth) ?
-        userRecord.customClaims.dateOfBirth :
-        "Not set",
-    });
-  } catch (error) {
-    console.error("Error fetching user profile:", error);
-    if (error.code === "auth/user-not-found") {
-      return res.status(404).json({error: "User not found"});
+    const userProfileDoc = await db.collection("Users").doc(authId).get();
+    if (!userProfileDoc.exists) {
+      throw new HttpsError("not-found", "User profile not found");
     }
-    res.status(500).json({error: "Error fetching user profile"});
+
+    const userProfile = userProfileDoc.data();
+    return { profile: userProfile };
+  } catch (error) {
+    logger.error("Error fetching user profile", error);
+    throw new HttpsError("internal", `Failed to fetch user profile: ${error.message}`);
   }
 });
 
-// === UPDATE PROFILE ===
-router.put("/updateProfile", async (req, res) => {
-  const {uid, newName, dateOfBirth} = req.body;
+// Set Profile function
+exports.setProfile = onCall(async (req) => {
+  const { authId, firstName, email, birthdate, profilePhotoUrl, lastName, gender, height, weight } = req.data;
 
-  if (!uid || !newName) {
-    return res.status(400)
-        .json({error: "User ID (uid) and new name are required"});
+  // Validate input data
+  if (typeof authId !== "string" || typeof firstName !== "string" || typeof email !== "string" ||
+      typeof birthdate !== "string" || (profilePhotoUrl && typeof profilePhotoUrl !== "string") || 
+      typeof lastName !== "string" || typeof gender !== "string" ||
+      (height !== undefined && typeof height !== "number") || 
+      (weight !== undefined && typeof weight !== "number")) {
+    throw new HttpsError("invalid-argument", "Invalid input data");
   }
 
   try {
-    // Update the user's display name in Firebase Auth
-    await admin.auth().updateUser(uid, {
-      displayName: newName,
-    });
+    // Convert birthdate to Firestore Timestamp
+    const birthdateTimestamp = Timestamp.fromDate(new Date(birthdate)); // Ensure Timestamp is defined
 
-    // Set custom claims to store non-auth related data (ex. date of birth)
-    if (dateOfBirth) {
-      await admin.auth().setCustomUserClaims(uid, {dateOfBirth});
-    }
+    // Update user profile in Firestore
+    await db.collection("Users").doc(authId).set({
+      firstName,
+      email,
+      birthdate: birthdateTimestamp, // Store as Timestamp
+      profilePhotoUrl,
+      lastName,
+      gender,
+      height: height !== undefined ? height : null, 
+      weight: weight !== undefined ? weight : null, 
+    }, { merge: true }); 
 
-    res.json({message: "Profile successfully updated"});
+    logger.info(`User profile updated successfully for authId: ${authId}`);
+    return { message: "Profile updated successfully." };
   } catch (error) {
-    console.error("Error updating user profile:", error);
-    if (error.code === "auth/user-not-found") {
-      return res.status(404).json({error: "User not found"});
-    }
-    res.status(500).json({error: "Error updating user profile"});
+    logger.error("Error updating user profile", error);
+    throw new HttpsError("internal", `Failed to update user profile: ${error.message}`);
   }
 });
-
-module.exports = router;

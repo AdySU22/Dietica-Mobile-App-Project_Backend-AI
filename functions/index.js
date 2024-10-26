@@ -22,7 +22,7 @@ const {
   resetPassword, 
   googleSignin
 } = require("./services/authServices")
-
+const {getProfile, setProfile} = require("./services/profile")
 
 exports.helloWorld = onCall((request) => {
   logger.info("Hello logs!", {structuredData: true});
@@ -60,4 +60,7 @@ exports.finalizeSignup = finalizeSignup;
 exports.forgotPassword = forgotPassword;
 exports.resetPassword = resetPassword;
 exports.googleSignin = googleSignin;
+
+exports.setProfile = setProfile;
+exports.getProfile = getProfile;
 
