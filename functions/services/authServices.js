@@ -17,8 +17,38 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// OTP expiration time
-const otpExpirationTime = 5 * 60 * 1000; // 5 minutes
+// OTP expiration time set to 1 minute
+const otpExpirationTime = 1 * 60 * 1000; // 1 minute
+
+// Function to track OTP attempts
+const MAX_OTP_ATTEMPTS = 4; // Maximum allowed attempts
+
+async function trackOtpAttempts(email) {
+  const attemptsDoc = await db.collection("OtpAttempts").doc(email).get();
+  const currentTime = Date.now();
+
+  if (attemptsDoc.exists) {
+    const { attempts, lastAttemptTime } = attemptsDoc.data();
+
+    // Reset attempts if the last attempt was more than 1 minute ago
+    if (currentTime - lastAttemptTime > otpExpirationTime) {
+      await db.collection("OtpAttempts").doc(email).set({ attempts: 1, lastAttemptTime: currentTime });
+      return 1; // Reset attempts to 1
+    }
+
+    if (attempts >= MAX_OTP_ATTEMPTS) {
+      throw new HttpsError("failed-precondition", "Maximum OTP attempts exceeded. Please request a new OTP.");
+    }
+
+    // Increment attempts
+    await db.collection("OtpAttempts").doc(email).update({ attempts: attempts + 1 });
+    return attempts + 1;
+  } else {
+    // First attempt
+    await db.collection("OtpAttempts").doc(email).set({ attempts: 1, lastAttemptTime: currentTime });
+    return 1; // First attempt
+  }
+}
 
 // Send OTP function
 exports.sendOtp = onCall(async (req) => {
