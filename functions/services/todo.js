@@ -5,16 +5,17 @@ const {db} = require("../core/firestore");
 const {model} = require("../core/model");
 const logger = require("firebase-functions/logger");
 
-exports.getTodo = onCall(async () => {
-  // TODO enable auth
-  // if (!request.auth) {
-  //   throw new HttpsError("unauthenticated", "User not authenticated");
-  // }
 const PromisePool = require("es6-promise-pool").default;
 
+exports.getTodo = onCall(async (request) => {
+  const {authId} = request.data;
 
-  // TODO where authId
+  if (!authId) {
+    throw new HttpsError("unauthenticated", "authId is required");
+  }
+
   const todo = await db.collection("UserTodo")
+      .where("authId", "==", authId)
       .orderBy("createdAt", "desc")
       .limit(1)
       .get();
