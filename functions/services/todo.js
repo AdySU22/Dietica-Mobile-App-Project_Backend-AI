@@ -1,4 +1,5 @@
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {Timestamp} = require("firebase-admin/firestore");
 const {db} = require("../core/firestore");
 const {model} = require("../core/model");
@@ -9,6 +10,8 @@ exports.getTodo = onCall(async () => {
   // if (!request.auth) {
   //   throw new HttpsError("unauthenticated", "User not authenticated");
   // }
+const PromisePool = require("es6-promise-pool").default;
+
 
   // TODO where authId
   const todo = await db.collection("UserTodo")
@@ -25,30 +28,72 @@ exports.getTodo = onCall(async () => {
   };
 });
 
-exports.generateTodo = onCall(async (request) => {
-  // TODO enable auth
-  // if (!request.auth) {
-  //   throw new HttpsError("unauthenticated", "User not authenticated");
-  // }
+exports.generateTodo = onSchedule("0 23 * * *", async (event) => {
+  const activeUserTokens = await db.collection("UserToken")
+      .where("updatedAt", ">", Timestamp.fromMillis(
+          Date.now() - 3 * 24 * 60 * 60 * 1000,
+      ))
+      .orderBy("updatedAt", "desc")
+      .limit(10) // TODO AI limit 15 requests per minute
+      .get();
 
-  // TODO where authId
+  const promisePool = new PromisePool(
+      () => promiseIterator(activeUserTokens.docs.map((v) => v.get())),
+      3, // limit concurrent process to reduce server load
+  );
+  await promisePool.start();
+
+  logger.log(`Generated Todo for ${activeUserTokens.docs.length} users`);
+});
+
+/**
+ * @function promiseIterator
+ * @description An iterator that returns a promise for generating user Todo,
+ *              given an array of user tokens.
+ * @param {Object[]} userTokens
+ * @return {function(): Promise<void>}
+ */
+function promiseIterator(userTokens) {
+  let index = 0;
+
+  return () => {
+    if (index < userTokens.length) {
+      const userToken = userTokens[index++];
+      // Return a function that returns a promise for generating Todo
+      return processUserTodo(userToken.authId);
+    } else {
+      // No more promises to return
+      return null;
+    }
+  };
+}
+
+/**
+ * Process user todo by generating personalized recommendations based on
+ * user's physical information, target, food, exercise, and water.
+ *
+ * @param {string} authId User's authentication ID.
+ * @return {Promise<string>} The generated todo.
+ */
+async function processUserTodo(authId) {
   const userPhysical = await db.collection("UserPhysical")
+      .where("authId", "==", authId)
       .limit(1)
       .get();
   if (userPhysical && userPhysical.docs.length <= 0) {
     throw new HttpsError("not-found", "UserPhysical not found");
   }
 
-  // TODO where authId
   const userTarget = await db.collection("UserTarget")
+      .where("authId", "==", authId)
       .limit(1)
       .get();
   if (userTarget && userTarget.docs.length <= 0) {
     throw new HttpsError("not-found", "UserTarget not found");
   }
 
-  // TODO where authId
   const foodLogs = await db.collection("FoodLog")
+      .where("authId", "==", authId)
       .where(
           "createdAt",
           ">",
@@ -58,8 +103,8 @@ exports.generateTodo = onCall(async (request) => {
       .limit(50)
       .get();
 
-  // TODO where authId
   const exerciseLogs = await db.collection("ExerciseLog")
+      .where("authId", "==", authId)
       .where(
           "createdAt",
           ">",
@@ -69,8 +114,8 @@ exports.generateTodo = onCall(async (request) => {
       .limit(50)
       .get();
 
-  // TODO where authId
   const waterLogs = await db.collection("WaterLog")
+      .where("authId", "==", authId)
       .where(
           "createdAt",
           ">",
@@ -103,14 +148,14 @@ exports.generateTodo = onCall(async (request) => {
   logger.info("generateTodo message:", message);
   logger.info("generateTodo reply:", reply.response.text());
 
-  // TODO add authId
   await db.collection("UserTodo").add({
+    authId: authId,
     todo: reply.response.text(),
     createdAt: new Date(),
   });
 
   return reply.response.text();
-});
+}
 
 /**
  * Returns a string summarizing a user's physical information.
