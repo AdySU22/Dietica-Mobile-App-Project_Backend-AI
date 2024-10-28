@@ -23,6 +23,7 @@ const {
   googleSignin
 } = require("./services/authServices")
 const {getProfile, setProfile} = require("./services/profile")
+const {getWaterLog, setWaterLog} = require("./services/WaterLog")
 
 exports.helloWorld = onCall((request) => {
   logger.info("Hello logs!", {structuredData: true});
@@ -63,4 +64,7 @@ exports.googleSignin = googleSignin;
 
 exports.setProfile = setProfile;
 exports.getProfile = getProfile;
+
+exports.getWaterLog = getWaterLog;
+exports.setWaterLog = setWaterLog;
 
