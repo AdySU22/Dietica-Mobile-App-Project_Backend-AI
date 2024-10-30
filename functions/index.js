@@ -1,6 +1,10 @@
 const {onCall} = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const {homeFoodTodaySummary} = require("./services/home");
+const {
+  uploadProfilePhoto,
+  deleteProfilePhoto,
+} = require("./services/profilePhoto");
 const {getReport} = require("./services/report");
 const {
   getAllFood,
@@ -31,6 +35,9 @@ exports.helloWorld = onCall((request) => {
 });
 
 exports.homeFoodTodaySummary = homeFoodTodaySummary;
+
+exports.uploadProfilePhoto = uploadProfilePhoto;
+exports.deleteProfilePhoto = deleteProfilePhoto;
 
 exports.getReport = getReport;
 

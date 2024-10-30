@@ -1,7 +1,5 @@
-const {initializeApp} = require("firebase-admin/app");
 const {getFirestore} = require("firebase-admin/firestore");
-
-initializeApp();
+require("./firebase");
 
 const db = getFirestore();
 db.settings({ignoreUndefinedProperties: true});
