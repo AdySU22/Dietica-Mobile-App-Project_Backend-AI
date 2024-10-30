@@ -17,17 +17,18 @@ const {fatsecretSearch, fatsecretGet} = require("./services/fatsecret");
 const {getChatbot, sendChatbot} = require("./services/chatbot");
 const {generateTodo, getTodo} = require("./services/todo");
 const {setUserTarget, getUserTarget} = require("./services/userTarget");
-const {setUserPhysical, getUserPhysical} = require("./services/userPhysical")
+const {setUserPhysical, getUserPhysical} = require("./services/userPhysical");
 const {
-  signin, 
-  signup, 
+  signin,
+  signup,
   finalizeSignup,
-  forgotPassword, 
-  resetPassword, 
-  googleSignin
-} = require("./services/authServices")
-const {getProfile, setProfile} = require("./services/profile")
-const {getWaterLog, setWaterLog} = require("./services/WaterLog")
+  forgotPassword,
+  resetPassword,
+  googleSignin,
+} = require("./services/authServices");
+const {setUserToken} = require("./services/userToken");
+const {getProfile, setProfile} = require("./services/profile");
+const {getWaterLog, setWaterLog} = require("./services/WaterLog");
 
 exports.helloWorld = onCall((request) => {
   logger.info("Hello logs!", {structuredData: true});
@@ -69,9 +70,10 @@ exports.forgotPassword = forgotPassword;
 exports.resetPassword = resetPassword;
 exports.googleSignin = googleSignin;
 
+exports.setUserToken = setUserToken;
+
 exports.setProfile = setProfile;
 exports.getProfile = getProfile;
 
 exports.getWaterLog = getWaterLog;
 exports.setWaterLog = setWaterLog;
-
