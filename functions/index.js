@@ -1,4 +1,5 @@
 const {onCall} = require("firebase-functions/v2/https");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const {homeFoodTodaySummary} = require("./services/home");
 const {getReport} = require("./services/report");
@@ -11,23 +12,29 @@ const {
 } = require("./services/food");
 const {fatsecretSearch, fatsecretGet} = require("./services/fatsecret");
 const {getChatbot, sendChatbot} = require("./services/chatbot");
-const {generateTodo, getTodo} = require("./services/todo");
+const {generateTodo, getTodo, generateTodoAlt} = require("./services/todo");
 const {setUserTarget, getUserTarget} = require("./services/userTarget");
-const {setUserPhysical, getUserPhysical} = require("./services/userPhysical")
+const {setUserPhysical, getUserPhysical} = require("./services/userPhysical");
 const {
-  signin, 
-  signup, 
+  signin,
+  signup,
   finalizeSignup,
-  forgotPassword, 
-  resetPassword, 
-  googleSignin
-} = require("./services/authServices")
-const {getProfile, setProfile} = require("./services/profile")
-const {getWaterLog, setWaterLog} = require("./services/WaterLog")
+  forgotPassword,
+  resetPassword,
+  googleSignin,
+} = require("./services/authServices");
+const {getProfile, setProfile} = require("./services/profile");
+const {getWaterLog, setWaterLog} = require("./services/WaterLog");
 
 exports.helloWorld = onCall((request) => {
   logger.info("Hello logs!", {structuredData: true});
   return "Hello from Firebase!";
+});
+
+// This cron schedule runs the function every day at midnight.
+exports.helloScheduler = onSchedule("0 0 * * *", () => {
+  logger.info("Hello scheduler!", {structuredData: true});
+  return "Returned from hello scheduler!";
 });
 
 exports.homeFoodTodaySummary = homeFoodTodaySummary;
@@ -48,6 +55,7 @@ exports.sendChatbot = sendChatbot;
 
 exports.getTodo = getTodo;
 exports.generateTodo = generateTodo;
+exports.generateTodoAlt = generateTodoAlt;
 
 exports.setUserTarget = setUserTarget;
 exports.getUserTarget = getUserTarget;
