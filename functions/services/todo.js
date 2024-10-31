@@ -1,17 +1,22 @@
+const admin = require("firebase-admin");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {Timestamp} = require("firebase-admin/firestore");
 const {db} = require("../core/firestore");
 const {model} = require("../core/model");
 const logger = require("firebase-functions/logger");
 
-exports.getTodo = onCall(async () => {
-  // TODO enable auth
-  // if (!request.auth) {
-  //   throw new HttpsError("unauthenticated", "User not authenticated");
-  // }
+const PromisePool = require("es6-promise-pool");
 
-  // TODO where authId
+exports.getTodo = onCall(async (request) => {
+  const {authId} = request.data;
+
+  if (!authId) {
+    throw new HttpsError("unauthenticated", "authId is required");
+  }
+
   const todo = await db.collection("UserTodo")
+      .where("authId", "==", authId)
       .orderBy("createdAt", "desc")
       .limit(1)
       .get();
@@ -25,68 +30,149 @@ exports.getTodo = onCall(async () => {
   };
 });
 
-exports.generateTodo = onCall(async (request) => {
-  // TODO enable auth
-  // if (!request.auth) {
-  //   throw new HttpsError("unauthenticated", "User not authenticated");
-  // }
-
-  // TODO where authId
-  const userPhysical = await db.collection("UserPhysical")
-      .limit(1)
+exports.generateTodoAlt = onCall(async (request) => {
+  const activeUserTokensSnapshot = await db.collection("UserToken")
+      .where("updatedAt", ">", Timestamp.fromMillis(
+          Date.now() - 3 * 24 * 60 * 60 * 1000,
+      ))
+      .orderBy("updatedAt", "desc")
+      .limit(10) // TODO AI limit 15 requests per minute
       .get();
-  if (userPhysical && userPhysical.docs.length <= 0) {
-    throw new HttpsError("not-found", "UserPhysical not found");
+  const activeUserTokens = activeUserTokensSnapshot.docs
+      .map((doc) => doc.data());
+
+  let countSuccess = 0;
+  // eslint-disable-next-line require-jsdoc
+  function* generatePromises() {
+    for (const userToken of activeUserTokens) {
+      yield (async () => {
+        try {
+          await processUserTodo(userToken.authId, userToken.token);
+          countSuccess++;
+        } catch (error) {
+          logger.debug("Error processing user todo:", error.message);
+        }
+      })();
+    }
   }
 
-  // TODO where authId
-  const userTarget = await db.collection("UserTarget")
-      .limit(1)
+  const promisePool = new PromisePool(
+      generatePromises(),
+      3, // limit concurrent process to reduce server load
+  );
+  await promisePool.start();
+
+  return {
+    message: `Generated Todo for ${countSuccess} users`,
+  };
+});
+
+exports.generateTodo = onSchedule("0 23 * * *", async (event) => {
+  const activeUserTokensSnapshot = await db.collection("UserToken")
+      .where("updatedAt", ">", Timestamp.fromMillis(
+          Date.now() - 3 * 24 * 60 * 60 * 1000,
+      ))
+      .orderBy("updatedAt", "desc")
+      .limit(10) // TODO AI limit 15 requests per minute
       .get();
-  if (userTarget && userTarget.docs.length <= 0) {
-    throw new HttpsError("not-found", "UserTarget not found");
+  const activeUserTokens = activeUserTokensSnapshot.docs
+      .map((doc) => doc.data());
+
+  let countSuccess = 0;
+  // eslint-disable-next-line require-jsdoc
+  function* generatePromises() {
+    for (const userToken of activeUserTokens) {
+      yield (async () => {
+        try {
+          await processUserTodo(userToken.authId, userToken.token);
+          countSuccess++;
+        } catch (error) {
+          logger.debug("Error processing user todo:", error.message);
+        }
+      })();
+    }
   }
 
-  // TODO where authId
-  const foodLogs = await db.collection("FoodLog")
-      .where(
-          "createdAt",
-          ">",
-          Timestamp.fromMillis(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      )
-      .orderBy("createdAt")
-      .limit(50)
-      .get();
+  const promisePool = new PromisePool(
+      generatePromises(),
+      3, // limit concurrent process to reduce server load
+  );
+  await promisePool.start();
 
-  // TODO where authId
-  const exerciseLogs = await db.collection("ExerciseLog")
-      .where(
-          "createdAt",
-          ">",
-          Timestamp.fromMillis(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      )
-      .orderBy("createdAt")
-      .limit(50)
-      .get();
+  return {
+    message: `Generated Todo for ${countSuccess} users`,
+  };
+});
 
-  // TODO where authId
-  const waterLogs = await db.collection("WaterLog")
-      .where(
-          "createdAt",
-          ">",
-          Timestamp.fromMillis(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      )
-      .orderBy("createdAt")
-      .get();
+/**
+ * @function processUserTodo
+ * @description Process a user's information and generate a personalized Todo
+ *              recommendation based on their physical information, target, and
+ *              exercise, food, and water logs.
+ * @param {string} authId - The user's authentication ID.
+ * @param {string} token - The user's Firebase token.
+ * @return {Promise<string>} A promise that resolves to the generated Todo
+ *                           recommendation.
+ */
+async function processUserTodo(authId, token) {
+  // Generate ToDo
+  const message = await getMessagePrompt(authId);
+  const reply = await model.generateContent(message);
+  logger.info({
+    message: "generateTodo",
+    data: {
+      message: message,
+      reply: reply.response.text(),
+    },
+  });
 
-  const userPhysicalPrompt = getUserPhysicalPrompt(userPhysical);
-  const userTargetPrompt = getUserTargetPrompt(userTarget);
-  const foodLogsSummaryPrompt = getFoodLogsPrompt(foodLogs);
-  const exerciseLogsSummaryPrompt = getExerciseLogsPrompt(exerciseLogs);
-  const waterLogsSummaryPrompt = getWaterLogsPrompt(waterLogs);
+  // Save generated ToDo
+  await db.collection("UserTodo").add({
+    authId: authId,
+    todo: reply.response.text(),
+    createdAt: new Date(),
+  });
+
+  // Send notification
+  try {
+    const notificationMessage = {
+      token: token,
+      notification: {
+        title: "Here's your To Do list for today",
+        body: "Keep your body healthy and happy today!",
+      },
+      android: {
+        notification: {
+          sound: "default",
+        },
+      },
+    };
+    await admin.messaging().send(notificationMessage);
+    logger.log(`Sent notification for ${authId}`);
+  } catch (e) {
+    logger.error(`Failed to send notification for ${authId}`, e);
+  }
+
+  return reply.response.text();
+}
+
+/**
+ * @function getMessagePrompt
+ * @description Returns a string summarizing a user's physical information and
+ *              their logs over the last 7 days, as well as a task to generate
+ *              a personalized recommendation for the user.
+ * @param {string} authId - The user's authentication ID.
+ * @return {Promise<string>} A promise that resolves to the message prompt.
+ */
+async function getMessagePrompt(authId) {
+  const userPhysicalPrompt = await getUserPhysicalPrompt(authId);
+  const userTargetPrompt = await getUserTargetPrompt(authId);
+  const foodLogsSummaryPrompt = await getFoodLogsPrompt(authId);
+  const exerciseLogsSummaryPrompt = await getExerciseLogsPrompt(authId);
+  const waterLogsSummaryPrompt = await getWaterLogsPrompt(authId);
 
   // eslint-disable-next-line max-len
-  const message = `Based on these user's information, provide a personalized recommendation focusing on three main topics: Food, Exercise, and Water.\n\n` +
+  return `Based on these user's information, provide a personalized recommendation focusing on three main topics: Food, Exercise, and Water.\n\n` +
       `User Physical\n${userPhysicalPrompt}\n\n` +
       `User Target\n${userTargetPrompt}\n\n` +
       `Food Log (7-day history)\n${foodLogsSummaryPrompt}\n\n` +
@@ -98,28 +184,22 @@ exports.generateTodo = onCall(async (request) => {
       `Title: A short, encouraging or informative title (e.g., "Increase Your Protein Intake!" or "Great Job on Cardio!")\n` +
       // eslint-disable-next-line max-len
       `Description: A short, personalized description or explanation based on the user's behavior over the last 7 days. This should highlight what they are doing well and areas for improvement.`;
-
-  const reply = await model.generateContent(message);
-  logger.info("generateTodo message:", message);
-  logger.info("generateTodo reply:", reply.response.text());
-
-  // TODO add authId
-  await db.collection("UserTodo").add({
-    todo: reply.response.text(),
-    createdAt: new Date(),
-  });
-
-  return reply.response.text();
-});
+}
 
 /**
  * Returns a string summarizing a user's physical information.
- *
- * @param {firebase.firestore.QuerySnapshot} userPhysical a QuerySnapshot
- * containing the user's physical information
+ * @param {string} authId the user's authentication ID
  * @return {string} a string summarizing the user's physical information
  */
-function getUserPhysicalPrompt(userPhysical) {
+async function getUserPhysicalPrompt(authId) {
+  const userPhysical = await db.collection("UserPhysical")
+      .where("authId", "==", authId)
+      .limit(1)
+      .get();
+  if (userPhysical && userPhysical.docs.length <= 0) {
+    throw new Error("UserPhysical not found");
+  }
+
   return `Weight: ${userPhysical.docs[0].data().weight}kg\n` +
       `Height: ${userPhysical.docs[0].data().height}cm\n` +
       `Gender: ${userPhysical.docs[0].data().gender}\n` +
@@ -129,31 +209,43 @@ function getUserPhysicalPrompt(userPhysical) {
 }
 
 /**
- * Returns a string summarizing a user's target information.
- *
- * The string includes the user's target weight and the duration of the
- * weight loss program.
- *
- * @param {firebase.firestore.QuerySnapshot} userTarget a QuerySnapshot
- * containing the user's target information
- * @return {string} a string summarizing the user's target information
+ * Returns a string summarizing a user's target.
+ * @param {string} authId the user's authentication ID
+ * @return {string} a string summarizing the user's target
  */
-function getUserTargetPrompt(userTarget) {
+async function getUserTargetPrompt(authId) {
+  const userTarget = await db.collection("UserTarget")
+      .where("authId", "==", authId)
+      .limit(1)
+      .get();
+  if (userTarget && userTarget.docs.length <= 0) {
+    throw new Error("UserTarget not found");
+  }
+
   return `Target Weight: ${userTarget.docs[0].data().weight}kg\n` +
   `Duration: ${userTarget.docs[0].data().duration} weeks`;
 }
 
 /**
- * Returns a string summarizing a user's food log.
- *
- * The string includes the date, calories, carbs, protein, fats, and sugar
- * for each day of the week.
- *
- * @param {firebase.firestore.QuerySnapshot} foodLogs a QuerySnapshot
- * containing the user's food log
- * @return {string} a string summarizing the user's food log
+ * Returns a string summarizing a user's food logs for the past 7 days.
+ * @param {string} authId the user's authentication ID
+ * @return {string} a string summarizing the user's food for the past 7 days
  */
-function getFoodLogsPrompt(foodLogs) {
+async function getFoodLogsPrompt(authId) {
+  const foodLogs = await db.collection("FoodLog")
+      .where("authId", "==", authId)
+      .where(
+          "createdAt",
+          ">",
+          Timestamp.fromMillis(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      )
+      .orderBy("createdAt")
+      .limit(50)
+      .get();
+  if (foodLogs.size < 3) {
+    throw new Error("Need at least 3 food logs for the past week");
+  }
+
   const foodSummary = foodLogs.docs.reduce((summary, foodLog) => {
     const foodData = foodLog.data();
     const currentLogDate = foodData.createdAt.toDate().getDate();
@@ -210,41 +302,64 @@ function getFoodLogsPrompt(foodLogs) {
 }
 
 /**
- * Returns a string summarizing a user's exercise log.
- *
- * The string includes the dates of the exercises, the duration of cardio
- * exercises, and the duration of weight lifting exercises.
- *
- * @param {firebase.firestore.QuerySnapshot} exerciseLogs a QuerySnapshot
- * containing the user's exercise log
- * @return {string} a string summarizing the user's exercise log
+ * Returns a prompt for the 7-day exercise log for the given user
+ * @param {string} authId - The user's authentication ID.
+ * @return {Promise<string>} A promise that resolves to the prompt for the
+ *                           exercise log.
  */
-function getExerciseLogsPrompt(exerciseLogs) {
-  return exerciseLogs.docs.map((exerciseLog) => {
-    const date = exerciseLog.data().createdAt.toDate();
-    const cardio = exerciseLog.data().cardio;
-    const weightLifting = exerciseLog.data().weightLifting;
+async function getExerciseLogsPrompt(authId) {
+  const exerciseLogs = await db.collection("ExerciseLog")
+      .where("authId", "==", authId)
+      .where(
+          "createdAt",
+          ">",
+          Timestamp.fromMillis(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      )
+      .orderBy("createdAt")
+      .limit(50)
+      .get();
 
-    return `Date: ${date.getDate()} ${date.getMonth() + 1}\n` +
-        `Cardio: ${cardio} hours; ` +
-        `Weight Lifting: ${weightLifting} hours`;
-  }).join("\n");
+  if (exerciseLogs.empty) {
+    return "No exercise logs found for the past week\n";
+  } else {
+    return exerciseLogs.docs.map((exerciseLog) => {
+      const date = exerciseLog.data().createdAt.toDate();
+      const cardio = exerciseLog.data().cardio;
+      const weightLifting = exerciseLog.data().weightLifting;
+
+      return `Date: ${date.getDate()} ${date.getMonth() + 1}\n` +
+          `Cardio: ${cardio} hours; ` +
+          `Weight Lifting: ${weightLifting} hours`;
+    }).join("\n");
+  }
 }
 
 /**
- * Returns a string summarizing a user's water log.
- *
- * The string includes the dates and the amount of water consumed.
- *
- * @param {firebase.firestore.QuerySnapshot} waterLogs a QuerySnapshot
- * containing the user's water log
- * @return {string} a string summarizing the user's water log
+ * Returns a string summarizing a user's water logs for the past 7 days.
+ * @param {string} authId - The user's authentication ID.
+ * @return {Promise<string>} A promise that resolves to the prompt for the
+ *                           water log.
  */
-function getWaterLogsPrompt(waterLogs) {
-  return waterLogs.docs.map((waterLog) => {
-    const date = waterLog.data().createdAt.toDate();
+async function getWaterLogsPrompt(authId) {
+  const waterLogs = await db.collection("WaterLog")
+      .where("authId", "==", authId)
+      .where(
+          "createdAt",
+          ">",
+          Timestamp.fromMillis(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      )
+      .orderBy("createdAt")
+      .get();
 
-    return `Date: ${date.getDate()} ${date.getMonth() + 1}\n` +
-        `Water: ${waterLog.data().amount} ml`;
-  }).join("\n");
+  if (waterLogs.empty) {
+    return "No water logs found for the past week. " +
+        "Assume normal water intake.\n";
+  } else {
+    return waterLogs.docs.map((waterLog) => {
+      const date = waterLog.data().createdAt.toDate();
+
+      return `Date: ${date.getDate()} ${date.getMonth() + 1}\n` +
+          `Water: ${waterLog.data().amount} ml`;
+    }).join("\n");
+  }
 }
