@@ -1,11 +1,19 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
-const { db } = require("../core/firestore");
-const { Timestamp } = require("firebase-admin/firestore");
+const {db} = require("../core/firestore");
+const {Timestamp} = require("firebase-admin/firestore");
 
 // Callable function to set user physical data
 exports.setUserPhysical = onCall(async (req) => {
-  const { authId, weight, height, gender, activityHours, softDrinkFastFood, medicine } = req.data;
+  const {
+    authId,
+    weight,
+    height,
+    gender,
+    activityHours,
+    softDrinkFastFood,
+    medicine,
+  } = req.data;
 
   // Validate input data types
   if (
@@ -22,8 +30,8 @@ exports.setUserPhysical = onCall(async (req) => {
 
   try {
     const userPhysicalSnapshot = await db.collection("UserPhysicals")
-      .where("authId", "==", authId)
-      .get();
+        .where("authId", "==", authId)
+        .get();
 
     if (userPhysicalSnapshot.empty) {
       const newDocRef = db.collection("UserPhysicals").doc();
@@ -41,7 +49,10 @@ exports.setUserPhysical = onCall(async (req) => {
       });
 
       logger.info(`User physical data created with ID: ${newDocRef.id}`);
-      return { message: "User physical data created successfully", id: newDocRef.id };
+      return {
+        message: "User physical data created successfully",
+        id: newDocRef.id,
+      };
     } else {
       const existingDocRef = userPhysicalSnapshot.docs[0].ref;
 
@@ -56,17 +67,20 @@ exports.setUserPhysical = onCall(async (req) => {
       });
 
       logger.info(`User physical data updated for authId: ${authId}`);
-      return { message: "User physical data updated successfully" };
+      return {message: "User physical data updated successfully"};
     }
   } catch (error) {
     logger.error("Error creating or updating user physical data", error);
-    throw new HttpsError("internal", "Error creating or updating user physical data");
+    throw new HttpsError(
+        "internal",
+        "Error creating or updating user physical data",
+    );
   }
 });
 
 // Callable function to get user physical data
 exports.getUserPhysical = onCall(async (req) => {
-  const { authId } = req.data;
+  const {authId} = req.data;
 
   if (typeof authId !== "string") {
     throw new HttpsError("invalid-argument", "Invalid authId");
@@ -76,8 +90,8 @@ exports.getUserPhysical = onCall(async (req) => {
 
   try {
     const userPhysicalSnapshot = await db.collection("UserPhysicals")
-      .where("authId", "==", authId)
-      .get();
+        .where("authId", "==", authId)
+        .get();
 
     if (userPhysicalSnapshot.empty) {
       logger.info(`No physical data found for authId: ${authId}`);
@@ -86,8 +100,13 @@ exports.getUserPhysical = onCall(async (req) => {
 
     const userPhysicalData = userPhysicalSnapshot.docs[0].data();
     userPhysicalData.id = userPhysicalSnapshot.docs[0].id;
-    logger.info(`User physical data retrieved successfully for authId: ${authId}`);
-    return { message: "User physical data retrieved successfully", data: userPhysicalData };
+    logger.info(
+        `User physical data retrieved successfully for authId: ${authId}`,
+    );
+    return {
+      message: "User physical data retrieved successfully",
+      data: userPhysicalData,
+    };
   } catch (error) {
     logger.error("Error retrieving user physical data", error);
     throw new HttpsError("internal", "Error retrieving user physical data");

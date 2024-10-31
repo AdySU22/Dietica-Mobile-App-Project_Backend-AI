@@ -1,6 +1,7 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+/* eslint-disable require-jsdoc */
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
-const { db } = require("../core/firestore");
+const {db} = require("../core/firestore");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const admin = require("firebase-admin");
@@ -9,7 +10,8 @@ const admin = require("firebase-admin");
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST, // Use environment variable for host
   port: process.env.EMAIL_PORT, // Use environment variable for port
-  secure: process.env.EMAIL_SECURE === 'true', // Use environment variable for secure
+  // Use environment variable for secure
+  secure: process.env.EMAIL_SECURE === "true",
   auth: {
     user: process.env.EMAIL_USER, // Use environment variable for email
     pass: process.env.EMAIL_PASS, // Use environment variable for password
@@ -27,31 +29,37 @@ async function trackOtpAttempts(email) {
   const currentTime = Date.now();
 
   if (attemptsDoc.exists) {
-    const { attempts, lastAttemptTime } = attemptsDoc.data();
+    const {attempts, lastAttemptTime} = attemptsDoc.data();
 
     // Reset attempts if the last attempt was more than 1 minute ago
     if (currentTime - lastAttemptTime > otpExpirationTime) {
-      await db.collection("OtpAttempts").doc(email).set({ attempts: 1, lastAttemptTime: currentTime });
+      await db.collection("OtpAttempts").doc(email)
+          .set({attempts: 1, lastAttemptTime: currentTime});
       return 1; // Reset attempts to 1
     }
 
     if (attempts >= MAX_OTP_ATTEMPTS) {
-      throw new HttpsError("resource-exhausted", "Maximum OTP attempts exceeded. Please request a new OTP.");
+      throw new HttpsError(
+          "resource-exhausted",
+          "Maximum OTP attempts exceeded. Please request a new OTP.",
+      );
     }
 
     // Increment attempts
-    await db.collection("OtpAttempts").doc(email).update({ attempts: attempts + 1 });
+    await db.collection("OtpAttempts").doc(email)
+        .update({attempts: attempts + 1});
     return attempts + 1;
   } else {
     // First attempt
-    await db.collection("OtpAttempts").doc(email).set({ attempts: 1, lastAttemptTime: currentTime });
+    await db.collection("OtpAttempts").doc(email)
+        .set({attempts: 1, lastAttemptTime: currentTime});
     return 1; // First attempt
   }
 }
 
 // Signup function
 exports.signup = onCall(async (req) => {
-  const { email } = req.data;
+  const {email} = req.data;
 
   // Validate email format
   if (typeof email !== "string") {
@@ -63,31 +71,40 @@ exports.signup = onCall(async (req) => {
   const expiration = Date.now() + otpExpirationTime;
 
   // Store OTP and expiration in Firestore
-  await db.collection("OtpCodes").doc(email).set({ otp, expiration });
+  await db.collection("OtpCodes").doc(email).set({otp, expiration});
 
   const mailOptions = {
     from: process.env.FUNCTIONS_EMAIL_USERNAME,
     to: email,
     subject: "Your OTP Code",
+    // eslint-disable-next-line max-len
     text: `Your OTP code is: ${otp}. This code is valid for the next 1 minutes.`,
+    // eslint-disable-next-line max-len
     html: `<strong>Your OTP code is: ${otp}</strong><br><p>This code is valid for the next 5 minutes.</p>`,
   };
 
   try {
     await transporter.sendMail(mailOptions);
     logger.info(`OTP sent to email: ${email}`);
-    return { message: "Signup initiated. Please check your email for the OTP." };
+    return {
+      message: "Signup initiated. Please check your email for the OTP.",
+    };
   } catch (error) {
     logger.error("Error sending OTP email", error);
-    throw new HttpsError("internal", `Failed to send OTP email: ${error.message}`);
+    throw new HttpsError(
+        "internal",
+        `Failed to send OTP email: ${error.message}`,
+    );
   }
 });
 
 exports.finalizeSignup = onCall(async (req) => {
-  const { email, otp, password, firstName, lastName } = req.data;
+  const {email, otp, password, firstName, lastName} = req.data;
 
   // Validate input data
-  if (typeof email !== "string" || typeof otp !== "string" || typeof password !== "string" || 
+  if (typeof email !== "string" ||
+      typeof otp !== "string" ||
+      typeof password !== "string" ||
       typeof firstName !== "string" || typeof lastName !== "string") {
     throw new HttpsError("invalid-argument", "Invalid input data");
   }
@@ -102,7 +119,7 @@ exports.finalizeSignup = onCall(async (req) => {
       throw new HttpsError("not-found", "No OTP found for this email");
     }
 
-    const { otp: storedOtp, expiration } = otpDoc.data();
+    const {otp: storedOtp, expiration} = otpDoc.data();
     if (Date.now() > expiration) {
       throw new HttpsError("failed-precondition", "OTP has expired");
     }
@@ -122,23 +139,24 @@ exports.finalizeSignup = onCall(async (req) => {
       firstName: firstName,
       lastName: lastName,
       email: email,
-      createdAt: new Date()
+      createdAt: new Date(),
     });
 
     // Cleanup OTP after successful signup
     await db.collection("OtpCodes").doc(email).delete();
     logger.info(`User signed up successfully for email: ${email}`);
-    return { message: "Signup finalized successfully." };
-
+    return {message: "Signup finalized successfully."};
   } catch (error) {
     logger.error("Error finalizing signup", error);
-    throw new HttpsError(error.code || "internal", error.message || "Failed to finalize signup.");
+    throw new HttpsError(
+        error.code || "internal", error.message || "Failed to finalize signup.",
+    );
   }
 });
 
 // Sign In function
 exports.signin = onCall(async (req) => {
-  const { email, password } = req.data;
+  const {email, password} = req.data;
 
   // Validate input data
   if (typeof email !== "string" || typeof password !== "string") {
@@ -148,10 +166,11 @@ exports.signin = onCall(async (req) => {
   try {
     // Sign in the user with email and password
     const userRecord = await admin.auth().getUserByEmail(email);
-    
-    // If the user exists, you can verify the password using the Firebase Admin SDK
+
+    // If user exists, verify the password using the Firebase Admin SDK
     // However, the Admin SDK does not provide direct password verification
-    // Here, we will simulate a sign-in response without password verification, which is usually done on the client side.
+    // Simulate a sign-in response without password verification,
+    // which is usually done on the client side.
 
     // Respond with a success message
     return {
@@ -161,9 +180,9 @@ exports.signin = onCall(async (req) => {
       // Optionally, you can return more user information if needed
     };
   } catch (error) {
-    if (error.code === 'auth/user-not-found') {
+    if (error.code === "auth/user-not-found") {
       throw new HttpsError("not-found", "User not found");
-    } else if (error.code === 'auth/wrong-password') {
+    } else if (error.code === "auth/wrong-password") {
       throw new HttpsError("invalid-argument", "Invalid password");
     } else {
       logger.error("Error signing in", error);
@@ -174,7 +193,7 @@ exports.signin = onCall(async (req) => {
 
 // Forgot Password function
 exports.forgotPassword = onCall(async (req) => {
-  const { email } = req.data;
+  const {email} = req.data;
 
   // Validate email format
   if (typeof email !== "string") {
@@ -186,31 +205,42 @@ exports.forgotPassword = onCall(async (req) => {
   const expiration = Date.now() + otpExpirationTime;
 
   // Store OTP and expiration in Firestore
-  await db.collection("OtpCodes").doc(email).set({ otp, expiration });
+  await db.collection("OtpCodes").doc(email).set({otp, expiration});
 
   const mailOptions = {
     from: process.env.FUNCTIONS_EMAIL_USERNAME,
     to: email,
     subject: "Your OTP Code for Password Reset",
+    // eslint-disable-next-line max-len
     text: `Your OTP code for password reset is: ${otp}. This code is valid for the next 1 minutes.`,
+    // eslint-disable-next-line max-len
     html: `<strong>Your OTP code for password reset is: ${otp}</strong><br><p>This code is valid for the next 5 minutes.</p>`,
   };
 
   try {
     await transporter.sendMail(mailOptions);
     logger.info(`OTP sent for password reset to email: ${email}`);
-    return { message: "Password reset initiated. Please check your email for the OTP." };
+    return {
+      message: "Password reset initiated. Please check your email for the OTP.",
+    };
   } catch (error) {
     logger.error("Error sending OTP email", error);
-    throw new HttpsError("internal", `Failed to send OTP email: ${error.message}`);
+    throw new HttpsError(
+        "internal", `Failed to send OTP email: ${error.message}`,
+    );
   }
 });
 
 exports.resetPassword = onCall(async (req) => {
-  const { email, otp, password, confirmPassword } = req.data;
+  const {email, otp, password, confirmPassword} = req.data;
 
   // Validate input data
-  if (typeof email !== "string" || typeof otp !== "string" || typeof password !== "string" || typeof confirmPassword !== "string") {
+  if (
+    typeof email !== "string" ||
+    typeof otp !== "string" ||
+    typeof password !== "string" ||
+    typeof confirmPassword !== "string"
+  ) {
     throw new HttpsError("invalid-argument", "Invalid input data");
   }
 
@@ -228,7 +258,7 @@ exports.resetPassword = onCall(async (req) => {
       throw new HttpsError("not-found", "No OTP found for this email");
     }
 
-    const { otp: storedOtp, expiration } = otpDoc.data();
+    const {otp: storedOtp, expiration} = otpDoc.data();
     if (Date.now() > expiration) {
       throw new HttpsError("failed-precondition", "OTP has expired");
     }
@@ -239,16 +269,18 @@ exports.resetPassword = onCall(async (req) => {
 
     // Reset password
     const user = await admin.auth().getUserByEmail(email);
-    await admin.auth().updateUser(user.uid, { password });
+    await admin.auth().updateUser(user.uid, {password});
 
     // Delete OTP after successful reset
     await db.collection("OtpCodes").doc(email).delete();
     logger.info(`Password reset successfully for email: ${email}`);
-    return { message: "Password reset successfully." };
-
+    return {message: "Password reset successfully."};
   } catch (error) {
     logger.error("Error resetting password", error);
-    throw new HttpsError(error.code || "internal", error.message || "Failed to reset password.");
+    throw new HttpsError(
+        error.code || "internal",
+        error.message || "Failed to reset password.",
+    );
   }
 });
 

@@ -1,11 +1,11 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
-const { db } = require("../core/firestore");
-const { Timestamp } = require("firebase-admin/firestore");
+const {db} = require("../core/firestore");
+const {Timestamp} = require("firebase-admin/firestore");
 
 // Callable function to set water log data
 exports.setWaterLog = onCall(async (req) => {
-  const { authId, amount } = req.data;
+  const {authId, amount} = req.data;
 
   // Validate input data types
   if (typeof authId !== "string" || typeof amount !== "number") {
@@ -14,8 +14,8 @@ exports.setWaterLog = onCall(async (req) => {
 
   try {
     const waterLogSnapshot = await db.collection("WaterLogs")
-      .where("authId", "==", authId)
-      .get();
+        .where("authId", "==", authId)
+        .get();
 
     if (waterLogSnapshot.empty) {
       const newDocRef = db.collection("WaterLogs").doc();
@@ -28,7 +28,7 @@ exports.setWaterLog = onCall(async (req) => {
       });
 
       logger.info(`Water log created with ID: ${newDocRef.id}`);
-      return { message: "Water log created successfully", id: newDocRef.id };
+      return {message: "Water log created successfully", id: newDocRef.id};
     } else {
       const existingDocRef = waterLogSnapshot.docs[0].ref;
 
@@ -38,7 +38,7 @@ exports.setWaterLog = onCall(async (req) => {
       });
 
       logger.info(`Water log updated for authId: ${authId}`);
-      return { message: "Water log updated successfully" };
+      return {message: "Water log updated successfully"};
     }
   } catch (error) {
     logger.error("Error creating or updating water log", error);
@@ -48,7 +48,7 @@ exports.setWaterLog = onCall(async (req) => {
 
 // Callable function to get water log data
 exports.getWaterLog = onCall(async (req) => {
-  const { authId } = req.data;
+  const {authId} = req.data;
 
   if (typeof authId !== "string") {
     throw new HttpsError("invalid-argument", "Invalid authId");
@@ -58,8 +58,8 @@ exports.getWaterLog = onCall(async (req) => {
 
   try {
     const waterLogSnapshot = await db.collection("WaterLogs")
-      .where("authId", "==", authId)
-      .get();
+        .where("authId", "==", authId)
+        .get();
 
     if (waterLogSnapshot.empty) {
       logger.info(`No water log data found for authId: ${authId}`);
@@ -69,7 +69,9 @@ exports.getWaterLog = onCall(async (req) => {
     const waterLogData = waterLogSnapshot.docs[0].data();
     waterLogData.id = waterLogSnapshot.docs[0].id;
     logger.info(`Water log data retrieved successfully for authId: ${authId}`);
-    return { message: "Water log data retrieved successfully", data: waterLogData };
+    return {
+      message: "Water log data retrieved successfully", data: waterLogData,
+    };
   } catch (error) {
     logger.error("Error retrieving water log data", error);
     throw new HttpsError("internal", "Error retrieving water log data");
