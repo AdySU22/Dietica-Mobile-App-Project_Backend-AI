@@ -2,6 +2,10 @@ const {onCall} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const {homeFoodTodaySummary} = require("./services/home");
+const {
+  uploadProfilePhoto,
+  deleteProfilePhoto,
+} = require("./services/profilePhoto");
 const {getReport} = require("./services/report");
 const {
   getAllFood,
@@ -23,6 +27,7 @@ const {
   resetPassword,
   googleSignin,
 } = require("./services/authServices");
+const {setUserToken} = require("./services/userToken");
 const {getProfile, setProfile} = require("./services/profile");
 const {getWaterLog, setWaterLog} = require("./services/WaterLog");
 
@@ -38,6 +43,9 @@ exports.helloScheduler = onSchedule("0 0 * * *", () => {
 });
 
 exports.homeFoodTodaySummary = homeFoodTodaySummary;
+
+exports.uploadProfilePhoto = uploadProfilePhoto;
+exports.deleteProfilePhoto = deleteProfilePhoto;
 
 exports.getReport = getReport;
 
@@ -70,9 +78,10 @@ exports.forgotPassword = forgotPassword;
 exports.resetPassword = resetPassword;
 exports.googleSignin = googleSignin;
 
+exports.setUserToken = setUserToken;
+
 exports.setProfile = setProfile;
 exports.getProfile = getProfile;
 
 exports.getWaterLog = getWaterLog;
 exports.setWaterLog = setWaterLog;
-
