@@ -22,6 +22,7 @@ const {setUserPhysical, getUserPhysical} = require("./services/userPhysical");
 const {
   signin,
   signup,
+  verifyOtp,
   finalizeSignup,
   forgotPassword,
   resetPassword,
@@ -73,6 +74,7 @@ exports.getUserPhysical = getUserPhysical;
 
 exports.signin = signin;
 exports.signup = signup;
+exports.verifyOtp = verifyOtp;
 exports.finalizeSignup = finalizeSignup;
 exports.forgotPassword = forgotPassword;
 exports.resetPassword = resetPassword;
