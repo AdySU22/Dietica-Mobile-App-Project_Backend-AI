@@ -3,7 +3,7 @@ const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {Timestamp} = require("firebase-admin/firestore");
 const {db} = require("../core/firestore");
-const {model} = require("../core/model");
+const {model, modelTodo} = require("../core/model");
 const logger = require("firebase-functions/logger");
 
 const PromisePool = require("es6-promise-pool");
@@ -30,41 +30,54 @@ exports.getTodo = onCall(async (request) => {
   };
 });
 
-exports.generateTodoAlt = onCall(async (request) => {
-  const activeUserTokensSnapshot = await db.collection("UserToken")
-      .where("updatedAt", ">", Timestamp.fromMillis(
-          Date.now() - 3 * 24 * 60 * 60 * 1000,
-      ))
-      .orderBy("updatedAt", "desc")
-      .limit(10) // TODO AI limit 15 requests per minute
-      .get();
-  const activeUserTokens = activeUserTokensSnapshot.docs
-      .map((doc) => doc.data());
+exports.getTodoV2 = onCall(async (request) => {
+  const {authId} = request.data;
 
-  let countSuccess = 0;
-  // eslint-disable-next-line require-jsdoc
-  function* generatePromises() {
-    for (const userToken of activeUserTokens) {
-      yield (async () => {
-        try {
-          await processUserTodo(userToken.authId, userToken.token);
-          countSuccess++;
-        } catch (error) {
-          logger.debug("Error processing user todo:", error.message);
-        }
-      })();
-    }
+  if (!authId) {
+    throw new HttpsError("unauthenticated", "authId is required");
   }
 
-  const promisePool = new PromisePool(
-      generatePromises(),
-      3, // limit concurrent process to reduce server load
-  );
-  await promisePool.start();
+  const todo = await db.collection("UserTodo")
+      .where("authId", "==", authId)
+      .orderBy("createdAt", "desc")
+      .limit(1)
+      .get();
+  if (todo && todo.docs.length <= 0) {
+    throw new HttpsError("not-found", "Todo not found");
+  }
 
   return {
-    message: `Generated Todo for ${countSuccess} users`,
+    todoV2: todo.docs[0].data().todoV2,
+    createdAt: todo.docs[0].data().createdAt,
   };
+});
+
+exports.generateTodoV2 = onCall(async (request) => {
+  const {authId} = request.data;
+
+  if (typeof authId !== "string") {
+    throw new HttpsError("unauthenticated", "authId is required");
+  }
+
+  // Generate ToDo
+  const message = await getMessagePromptV2(authId);
+  const reply = await modelTodo.generateContent(message);
+  logger.info({
+    message: "generateTodo",
+    data: {
+      message: message,
+      reply: reply.response.text(),
+    },
+  });
+
+  // Save generated ToDo
+  await db.collection("UserTodo").add({
+    authId: authId,
+    todoV2: JSON.parse(reply.response.text()),
+    createdAt: new Date(),
+  });
+
+  return JSON.parse(reply.response.text());
 });
 
 exports.generateTodo = onSchedule("0 23 * * *", async (event) => {
@@ -184,6 +197,45 @@ async function getMessagePrompt(authId) {
       `Title: A short, encouraging or informative title (e.g., "Increase Your Protein Intake!" or "Great Job on Cardio!")\n` +
       // eslint-disable-next-line max-len
       `Description: A short, personalized description or explanation based on the user's behavior over the last 7 days. This should highlight what they are doing well and areas for improvement.`;
+}
+
+/**
+ * V2: Builds a summary prompt of a user's physical data, goals, and weekly logs
+ * for personalized Food, Exercise, and Water advice.
+ * @param {string} authId - User's authentication ID.
+ * @return {Promise<string>} Resolves to the recommendation prompt.
+ */
+async function getMessagePromptV2(authId) {
+  const userPhysicalPrompt = await getUserPhysicalPrompt(authId);
+  const userTargetPrompt = await getUserTargetPrompt(authId);
+  const foodLogsSummaryPrompt = await getFoodLogsPrompt(authId);
+  const exerciseLogsSummaryPrompt = await getExerciseLogsPrompt(authId);
+  const waterLogsSummaryPrompt = await getWaterLogsPrompt(authId);
+
+  // eslint-disable-next-line max-len
+  return `Based on these user's information, provide a personalized recommendation focusing on three main topics: Food, Exercise, and Water.\n\n` +
+      `User Physical\n${userPhysicalPrompt}\n\n` +
+      `User Target\n${userTargetPrompt}\n\n` +
+      `Food Log (7-day history)\n${foodLogsSummaryPrompt}\n\n` +
+      `Water Log (7-day history)\n${waterLogsSummaryPrompt}\n\n` +
+      `Exercise Log (7-day history)\n${exerciseLogsSummaryPrompt}\n\n` +
+      // eslint-disable-next-line max-len
+      `Task: Generate personalized recommendations under three categories: Food, Exercise, and Water.\n` +
+      `\n` +
+      `Food description format (adjust based on user data):\n` +
+      `Today Target Calories: // example: 1800 kcal\n` +
+      `Carbs: // example: 300 g\n` +
+      `Protein: // example: 60 g\n` +
+      `Fat: // example: 50 g\n` +
+      `Sugar: // example: 50 g\n` +
+      `\n` +
+      `Exercise description format (adjust based on user data):\n` +
+      `This Week Target Cardio: // example: 2 more sessions\n` +
+      `Weightlifting: // example: 1 more session\n` +
+      `Yoga: // example: Congratulations, you have done enough!\n` +
+      `\n` +
+      `Water description format (adjust based on user data):\n` +
+      `// example: Drink another 5 glasses of water today`;
 }
 
 /**
