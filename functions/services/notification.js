@@ -1,4 +1,5 @@
 const admin = require("firebase-admin");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {Timestamp} = require("firebase-admin/firestore");
 const {db} = require("../core/firestore");
@@ -6,6 +7,20 @@ const logger = require("firebase-functions/logger");
 const PromisePool = require("es6-promise-pool");
 
 const MAX_CONCURRENT = 10;
+
+exports.getNotifications = onCall(async (req) => {
+  const {authId} = req.data;
+  if (typeof authId !== "string") {
+    throw new HttpsError("invalid-argument", "Invalid authId format");
+  }
+
+  const notifications = await db.collection("UserNotification")
+      .where("authId", "==", authId)
+      .orderBy("createdAt", "desc")
+      .limit(5)
+      .get();
+  return notifications.docs.map((doc) => doc.data());
+});
 
 exports.notifyFood = onSchedule("0 23 * * *", async (event) => {
   const activeUserTokensSnapshot = await db.collection("UserToken")
@@ -152,6 +167,13 @@ async function notify(authId, token, title, body) {
       },
     };
     await admin.messaging().send(notificationMessage);
+
+    await db.collection("UserNotification").add({
+      authId: authId,
+      title: title,
+      body: body,
+      createdAt: new Date(),
+    });
     logger.log(`Sent notification for ${authId}`);
   } catch (e) {
     logger.error(`Failed to send notification for ${authId}`, e);
