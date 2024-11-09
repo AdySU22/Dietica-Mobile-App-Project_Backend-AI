@@ -376,12 +376,10 @@ async function getExerciseLogsPrompt(authId) {
   } else {
     return exerciseLogs.docs.map((exerciseLog) => {
       const date = exerciseLog.data().createdAt.toDate();
-      const cardio = exerciseLog.data().cardio;
-      const weightLifting = exerciseLog.data().weightLifting;
+      const {name, duration} = exerciseLog.data();
 
-      return `Date: ${date.getDate()} ${date.getMonth() + 1}\n` +
-          `Cardio: ${cardio} hours; ` +
-          `Weight Lifting: ${weightLifting} hours`;
+      // eslint-disable-next-line max-len
+      return `${date.getDate()} ${date.getMonth() + 1}: ${name} for ${duration} minutes`;
     }).join("\n");
   }
 }
@@ -407,11 +405,26 @@ async function getWaterLogsPrompt(authId) {
     return "No water logs found for the past week. " +
         "Assume normal water intake.\n";
   } else {
-    return waterLogs.docs.map((waterLog) => {
+    // Aggregate WaterLog for each day
+    const waterLogMap = new Map();
+    waterLogs.docs.forEach((waterLog) => {
       const date = waterLog.data().createdAt.toDate();
+      const dateString = `${date.getDate()} ${date.getMonth() + 1}`;
+      const existingLog = waterLogMap.get(dateString);
+      if (existingLog) {
+        existingLog.total += waterLog.data().amount;
+      } else {
+        waterLogMap.set(dateString, {
+          total: waterLog.data().amount,
+        });
+      }
+    });
 
-      return `Date: ${date.getDate()} ${date.getMonth() + 1}\n` +
-          `Water: ${waterLog.data().amount} ml`;
-    }).join("\n");
+    const waterLogPrompts = [];
+    waterLogMap.forEach((log, dateString) => {
+      waterLogPrompts.push(`Date: ${dateString}\nWater: ${log.total} ml`);
+    });
+
+    return waterLogPrompts.join("\n");
   }
 }
