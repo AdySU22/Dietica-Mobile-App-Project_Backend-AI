@@ -16,7 +16,12 @@ const {
 } = require("./services/food");
 const {fatsecretSearch, fatsecretGet} = require("./services/fatsecret");
 const {getChatbot, sendChatbot} = require("./services/chatbot");
-const {generateTodo, getTodo, generateTodoAlt} = require("./services/todo");
+const {
+  generateTodo,
+  getTodo,
+  generateTodoV2,
+  getTodoV2,
+} = require("./services/todo");
 const {setUserTarget, getUserTarget} = require("./services/userTarget");
 const {setUserPhysical, getUserPhysical} = require("./services/userPhysical");
 const {
@@ -63,8 +68,9 @@ exports.getChatbot = getChatbot;
 exports.sendChatbot = sendChatbot;
 
 exports.getTodo = getTodo;
+exports.getTodoV2 = getTodoV2;
 exports.generateTodo = generateTodo;
-exports.generateTodoAlt = generateTodoAlt;
+exports.generateTodoV2 = generateTodoV2;
 
 exports.setUserTarget = setUserTarget;
 exports.getUserTarget = getUserTarget;
