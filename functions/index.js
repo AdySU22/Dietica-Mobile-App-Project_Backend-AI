@@ -31,6 +31,11 @@ const {
 const {setUserToken} = require("./services/userToken");
 const {getProfile, setProfile} = require("./services/profile");
 const {getWaterLog, setWaterLog} = require("./services/WaterLog");
+const {
+  notifyFood,
+  notifyExercise,
+  notifyWater,
+} = require("./services/notification");
 
 exports.helloWorld = onCall((request) => {
   logger.info("Hello logs!", {structuredData: true});
@@ -87,3 +92,7 @@ exports.getProfile = getProfile;
 
 exports.getWaterLog = getWaterLog;
 exports.setWaterLog = setWaterLog;
+
+exports.notifyFood = notifyFood;
+exports.notifyExercise = notifyExercise;
+exports.notifyWater = notifyWater;
