@@ -95,7 +95,7 @@ async function validateOtp(email, otp) {
   return true;
 }
 
-  // Signup Function
+// Signup Function
 exports.signup = onCall(async (req) => {
   const {email} = req.data;
 
@@ -139,16 +139,16 @@ exports.signup = onCall(async (req) => {
   }
 });
 
-// Verify OTP Function 
+// Verify OTP Function
 exports.verifyOtp = onCall(async (req) => {
   const {email, otp} = req.data;
 
   // Validate email and OTP format
   if (!validator.isEmail(email) || typeof otp !== "string") {
     throw new functions.https.HttpsError(
-      "invalid-argument",
-      "Invalid OTP"
-      );
+        "invalid-argument",
+        "Invalid OTP",
+    );
   }
 
   try {
@@ -160,7 +160,7 @@ exports.verifyOtp = onCall(async (req) => {
   }
 });
 
- // Finalize Signup Function (General Information)
+// Finalize Signup Function (General Information)
 exports.finalizeSignup = onCall(async (req) => {
   const {email, password, confirmPassword, firstName, lastName} = req.data;
 
@@ -186,8 +186,8 @@ exports.finalizeSignup = onCall(async (req) => {
 
     if (doc.data().isVerified === false) {
       throw new HttpsError(
-        "permission-denied",
-        "Your request is unauthorized.");
+          "permission-denied",
+          "Your request is unauthorized.");
     }
 
     const existingUser = await admin.auth().getUserByEmail(email).catch((
@@ -219,7 +219,7 @@ exports.finalizeSignup = onCall(async (req) => {
   }
 });
 
-// Signin Function 
+// Signin Function
 exports.signin = onCall(async (req) => {
   const {email, password} = req.data;
 
