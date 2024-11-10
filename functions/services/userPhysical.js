@@ -49,8 +49,8 @@ exports.setUserPhysical = onCall(async (req) => {
   } catch (error) {
     logger.error("Error creating user physical data", error);
     throw new HttpsError(
-      "internal",
-      "Error creating user physical data"
+        "internal",
+        "Error creating user physical data",
     );
   }
 });
@@ -78,7 +78,7 @@ exports.getUserPhysical = onCall(async (req) => {
     const userPhysicalData = userPhysicalSnapshot.docs[0].data();
     userPhysicalData.id = userPhysicalSnapshot.docs[0].id;
     logger.info(
-        `User physical data retrieved successfully for authId: ${authId}`
+        `User physical data retrieved successfully for authId: ${authId}`,
     );
     return {
       message: "User physical data retrieved successfully",
