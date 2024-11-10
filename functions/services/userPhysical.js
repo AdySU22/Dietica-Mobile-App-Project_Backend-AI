@@ -10,9 +10,8 @@ exports.setUserPhysical = onCall(async (req) => {
     weight,
     height,
     gender,
-    activityHours,
-    softDrinkFastFood,
-    medicine,
+    activityLevels,
+    illnesses,
   } = req.data;
 
   // Validate input data types
@@ -21,59 +20,37 @@ exports.setUserPhysical = onCall(async (req) => {
     typeof weight !== "number" ||
     typeof height !== "number" ||
     typeof gender !== "string" ||
-    typeof activityHours !== "number" ||
-    typeof softDrinkFastFood !== "number" ||
-    typeof medicine !== "string"
+    typeof activityLevels !== "string" ||
+    (illnesses !== undefined && typeof illnesses !== "string") // Optional field
   ) {
     throw new HttpsError("invalid-argument", "Invalid input data");
   }
 
   try {
-    const userPhysicalSnapshot = await db.collection("UserPhysicals")
-        .where("authId", "==", authId)
-        .get();
+    // Always create a new document instead of checking for an existing one
+    const newDocRef = db.collection("UserPhysicals").doc();
 
-    if (userPhysicalSnapshot.empty) {
-      const newDocRef = db.collection("UserPhysicals").doc();
+    await newDocRef.set({
+      authId,
+      weight,
+      height,
+      gender,
+      activityLevels,
+      illnesses: illnesses || null, // Set to null if undefined
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
 
-      await newDocRef.set({
-        authId,
-        weight,
-        height,
-        gender,
-        activityHours,
-        softDrinkFastFood,
-        medicine,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      });
-
-      logger.info(`User physical data created with ID: ${newDocRef.id}`);
-      return {
-        message: "User physical data created successfully",
-        id: newDocRef.id,
-      };
-    } else {
-      const existingDocRef = userPhysicalSnapshot.docs[0].ref;
-
-      await existingDocRef.update({
-        weight,
-        height,
-        gender,
-        activityHours,
-        softDrinkFastFood,
-        medicine,
-        updatedAt: Timestamp.now(),
-      });
-
-      logger.info(`User physical data updated for authId: ${authId}`);
-      return {message: "User physical data updated successfully"};
-    }
+    logger.info(`User physical data created with ID: ${newDocRef.id}`);
+    return {
+      message: "User physical data created successfully",
+      id: newDocRef.id,
+    };
   } catch (error) {
-    logger.error("Error creating or updating user physical data", error);
+    logger.error("Error creating user physical data", error);
     throw new HttpsError(
-        "internal",
-        "Error creating or updating user physical data",
+      "internal",
+      "Error creating user physical data"
     );
   }
 });
@@ -101,7 +78,7 @@ exports.getUserPhysical = onCall(async (req) => {
     const userPhysicalData = userPhysicalSnapshot.docs[0].data();
     userPhysicalData.id = userPhysicalSnapshot.docs[0].id;
     logger.info(
-        `User physical data retrieved successfully for authId: ${authId}`,
+        `User physical data retrieved successfully for authId: ${authId}`
     );
     return {
       message: "User physical data retrieved successfully",
