@@ -20,7 +20,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const otpExpirationTime = 1 * 60 * 1000; // OTP valid for 5 minutes
+const otpExpirationTime = 1 * 60 * 1000;
 const MAX_OTP_ATTEMPTS = 4;
 
 async function trackOtpAttempts(email) {
@@ -223,13 +223,11 @@ exports.finalizeSignup = onCall(async (req) => {
 exports.signin = onCall(async (req) => {
   const {email, password} = req.data;
 
-  // Validate input types
   if (typeof email !== "string" || typeof password !== "string") {
     throw new HttpsError("invalid-argument", "Email or password invalid");
   }
 
   try {
-    // Use Firebase Authentication REST API to sign in the user
     const apiKey = process.env.API_KEY;
     const authUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`;
 
@@ -239,7 +237,7 @@ exports.signin = onCall(async (req) => {
       returnSecureToken: true,
     });
 
-    // If successful, generate a custom token
+    // Generate a new custom token after login to ensure token validity
     const idToken = await admin.auth().createCustomToken(response.data.localId);
 
     return {
@@ -305,7 +303,7 @@ exports.forgotPassword = onCall(async (req) => {
 exports.resetPassword = onCall(async (req) => {
   const {email, password, confirmPassword} = req.data;
 
-  // Input validation
+  // Check input types
   if (
     typeof email !== "string" ||
     typeof password !== "string" ||
@@ -320,34 +318,47 @@ exports.resetPassword = onCall(async (req) => {
   }
 
   try {
-    // Fetch the OTP document from Firestore
-    const doc = await db.collection("OtpCodes").doc(email).get();
-
-    // Check if OTP document exists and is verified
-    if (!doc.exists || doc.data().isVerified === false) {
-      throw new HttpsError("permission-denied", "OTP not verified or expired");
+    const otpDoc = await db.collection("OtpCodes").doc(email).get();
+    if (otpDoc.data().isVerified === false) {
+      throw new HttpsError(
+          "permission-denied",
+          "OTP is not verified.",
+      );
     }
 
-    // Optionally: Check if OTP has expired based on timestamp (if needed)
-    // const expirationTime = doc.data().timestamp + (expiryTimeInMs);
-    // if (Date.now() > expirationTime) {
-    //   throw new HttpsError("permission-denied", "OTP has expired");
-    // }
+    if (!otpDoc.exists) {
+      throw new HttpsError(
+          "not-found",
+          "No OTP verification found for this email.",
+      );
+    }
 
-    // Update the user's password
     const userRecord = await admin.auth().getUserByEmail(email);
+
+    // Update password
     await admin.auth().updateUser(userRecord.uid, {password: password});
+
+    // Log the password update
+    logger.info(`Password updated for user: ${userRecord.uid}`);
 
     // Revoke any existing refresh tokens
     await admin.auth().revokeRefreshTokens(userRecord.uid);
 
-    logger.info(`Password reset and tokens revoked for email: ${email}`);
+    // Wait for Firebase to fully process the token revocation
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
     return {message: "Password reset successfully."};
   } catch (error) {
-    logger.error("Error resetting password", error);
+    logger.error(
+        "Error resetting password",
+        {
+          email: email,
+          error: error.message,
+        },
+    );
     throw new HttpsError(
         error.code || "internal",
-        error.message || "Failed to reset password.",
+        error.message || "Failed to reset password due to an internal error.",
     );
   }
 });
