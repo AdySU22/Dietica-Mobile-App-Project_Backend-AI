@@ -3,34 +3,49 @@ const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {Timestamp} = require("firebase-admin/firestore");
 const {db} = require("../core/firestore");
-const {model} = require("../core/model");
+const {modelTodo} = require("../core/model");
 const logger = require("firebase-functions/logger");
 
 const PromisePool = require("es6-promise-pool");
 
-exports.getTodo = onCall(async (request) => {
+exports.getTodoV2 = onCall(async (request) => {
   const {authId} = request.data;
 
   if (!authId) {
     throw new HttpsError("unauthenticated", "authId is required");
   }
 
-  const todo = await db.collection("UserTodo")
+  const todo = await db.collection("UserTodoV2")
       .where("authId", "==", authId)
       .orderBy("createdAt", "desc")
       .limit(1)
       .get();
+
+  // If no todo found, generate a new one
   if (todo && todo.docs.length <= 0) {
-    throw new HttpsError("not-found", "Todo not found");
+    return await processUserTodoV2(authId);
   }
 
-  return {
-    todo: todo.docs[0].data().todo,
-    createdAt: todo.docs[0].data().createdAt,
-  };
+  const data = todo.docs[0].data();
+  // Check if data.createdAt exists and is older than 1 day
+  if (data.createdAt && data.createdAt._seconds) {
+    const createdAtDate = new Date(data.createdAt._seconds * 1000);
+    const currentDate = new Date();
+
+    const differenceInMs = currentDate - createdAtDate;
+    const oneDayInMs = 24 * 60 * 60 * 1000;
+
+    // More than 1 day
+    if (differenceInMs > oneDayInMs) {
+      // Generate a new Todo and return it
+      return await processUserTodoV2(authId);
+    }
+  }
+
+  return data;
 });
 
-exports.generateTodo = onSchedule("0 23 * * *", async (event) => {
+exports.generateTodoScheduleV2 = onSchedule("0 23 * * *", async (event) => {
   const activeUserTokensSnapshot = await db.collection("UserToken")
       .where("updatedAt", ">", Timestamp.fromMillis(
           Date.now() - 3 * 24 * 60 * 60 * 1000,
@@ -47,7 +62,7 @@ exports.generateTodo = onSchedule("0 23 * * *", async (event) => {
     for (const userToken of activeUserTokens) {
       yield (async () => {
         try {
-          await processUserTodo(userToken.authId, userToken.token);
+          await processUserTodoV2(userToken.authId, userToken.token);
           countSuccess++;
         } catch (error) {
           logger.debug("Error processing user todo:", error.message);
@@ -63,24 +78,39 @@ exports.generateTodo = onSchedule("0 23 * * *", async (event) => {
   await promisePool.start();
 
   return {
-    message: `Generated Todo for ${countSuccess} users`,
+    message: `Generated TodoV2 for ${countSuccess} users`,
   };
 });
 
+exports.generateTodoV2 = onCall(async (request) => {
+  const {authId} = request.data;
+  if (typeof authId !== "string") {
+    throw new HttpsError("unauthenticated", "authId is required");
+  }
+
+  return await processUserTodoV2(authId, null);
+});
+
 /**
- * @function processUserTodo
- * @description Process a user's information and generate a personalized Todo
- *              recommendation based on their physical information, target, and
- *              exercise, food, and water logs.
- * @param {string} authId - The user's authentication ID.
- * @param {string} token - The user's Firebase token.
- * @return {Promise<string>} A promise that resolves to the generated Todo
- *                           recommendation.
+ * Generates a To Do list for the given user and sends a notification to
+ * the given FCM token.
+ *
+ * @param {string} authId - The auth ID of the user
+ * @param {string} token - The FCM token to send the notification to
+ * @return {Promise<object>} A promise that resolves to the generated
+ *     To Do list data
+ * @throws {HttpsError} If the authId is invalid or not provided
+ * @throws {Error} If there is an error generating the To Do list or
+ *     sending the notification
  */
-async function processUserTodo(authId, token) {
+async function processUserTodoV2(authId, token) {
+  if (typeof authId !== "string") {
+    throw new HttpsError("unauthenticated", "authId is required");
+  }
+
   // Generate ToDo
-  const message = await getMessagePrompt(authId);
-  const reply = await model.generateContent(message);
+  const message = await getMessagePromptV2(authId);
+  const reply = await modelTodo.generateContent(message);
   logger.info({
     message: "generateTodo",
     data: {
@@ -90,14 +120,21 @@ async function processUserTodo(authId, token) {
   });
 
   // Save generated ToDo
-  await db.collection("UserTodo").add({
+  const responseJson = JSON.parse(reply.response.text());
+  const data = {
     authId: authId,
-    todo: reply.response.text(),
+    foodTitle: responseJson.food.title,
+    foodDescription: responseJson.food.description,
+    exerciseTitle: responseJson.exercise.title,
+    exerciseDescription: responseJson.exercise.description,
+    waterTitle: responseJson.water.title,
+    waterDescription: responseJson.water.description,
     createdAt: new Date(),
-  });
+  };
+  await db.collection("UserTodoV2").add(data);
 
   // Send notification
-  try {
+  if (token != null) {
     const notificationMessage = {
       token: token,
       notification: {
@@ -111,23 +148,18 @@ async function processUserTodo(authId, token) {
       },
     };
     await admin.messaging().send(notificationMessage);
-    logger.log(`Sent notification for ${authId}`);
-  } catch (e) {
-    logger.error(`Failed to send notification for ${authId}`, e);
   }
 
-  return reply.response.text();
+  return data;
 }
 
 /**
- * @function getMessagePrompt
- * @description Returns a string summarizing a user's physical information and
- *              their logs over the last 7 days, as well as a task to generate
- *              a personalized recommendation for the user.
- * @param {string} authId - The user's authentication ID.
- * @return {Promise<string>} A promise that resolves to the message prompt.
+ * V2: Builds a summary prompt of a user's physical data, goals, and weekly logs
+ * for personalized Food, Exercise, and Water advice.
+ * @param {string} authId - User's authentication ID.
+ * @return {Promise<string>} Resolves to the recommendation prompt.
  */
-async function getMessagePrompt(authId) {
+async function getMessagePromptV2(authId) {
   const userPhysicalPrompt = await getUserPhysicalPrompt(authId);
   const userTargetPrompt = await getUserTargetPrompt(authId);
   const foodLogsSummaryPrompt = await getFoodLogsPrompt(authId);
@@ -142,11 +174,22 @@ async function getMessagePrompt(authId) {
       `Water Log (7-day history)\n${waterLogsSummaryPrompt}\n\n` +
       `Exercise Log (7-day history)\n${exerciseLogsSummaryPrompt}\n\n` +
       // eslint-disable-next-line max-len
-      `Task: Using this data, generate personalized recommendations under three categories: Food, Exercise, and Water. Each category should have:\n` +
-      // eslint-disable-next-line max-len
-      `Title: A short, encouraging or informative title (e.g., "Increase Your Protein Intake!" or "Great Job on Cardio!")\n` +
-      // eslint-disable-next-line max-len
-      `Description: A short, personalized description or explanation based on the user's behavior over the last 7 days. This should highlight what they are doing well and areas for improvement.`;
+      `Task: Generate personalized recommendations under three categories: Food, Exercise, and Water.\n` +
+      `\n` +
+      `Food description format (adjust based on user data):\n` +
+      `Today Target Calories: // example: 1800 kcal\n` +
+      `Carbs: // example: 300 g\n` +
+      `Protein: // example: 60 g\n` +
+      `Fat: // example: 50 g\n` +
+      `Sugar: // example: 50 g\n` +
+      `\n` +
+      `Exercise description format (adjust based on user data):\n` +
+      `This Week Target Cardio: // example: 2 more sessions\n` +
+      `Weightlifting: // example: 1 more session\n` +
+      `Yoga: // example: Congratulations, you have done enough!\n` +
+      `\n` +
+      `Water description format (adjust based on user data):\n` +
+      `// example: Drink another 5 glasses of water today`;
 }
 
 /**
