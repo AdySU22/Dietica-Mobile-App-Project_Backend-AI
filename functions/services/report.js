@@ -20,6 +20,7 @@ exports.getReport = onCall(async (req) => {
   const bmi = await getBmi(authId);
   const averageWater = await getAverageWaterWeek(authId, iataTimeZone);
   const averageCalories = await getAverageCaloriesWeek(authId, iataTimeZone);
+  const dailyIntakes = await getDailyIntakes(authId, iataTimeZone);
   const dailyExerciseMinutes = await getDailyExerciseMinutes(
       authId, iataTimeZone,
   );
@@ -28,6 +29,7 @@ exports.getReport = onCall(async (req) => {
     bmi,
     averageWater,
     averageCalories,
+    dailyIntakes,
     dailyExerciseMinutes,
   };
   return report;
@@ -38,7 +40,7 @@ const getBmi = async (authId) => {
       .where("authId", "==", authId)
       .limit(1)
       .get();
-  if (userPhysical && userPhysical.docs.length <= 0) {
+  if (!userPhysical || userPhysical.docs.length <= 0) {
     throw new HttpsError("not-found", "UserPhysical not found");
   }
 
@@ -114,6 +116,44 @@ const getAverageCaloriesWeek = async (authId, iataTimeZone) => {
   return averageDailyCalories;
 };
 
+const getDailyIntakes = async (authId, iataTimeZone) => {
+  // Get one week ago timestamp
+  const oneWeekAgoTimestamp = getOneWeekAgoTimestamp(iataTimeZone);
+  // Convert the oneWeekAgo timestamp to a dayjs object
+  const oneWeekAgo = dayjs(oneWeekAgoTimestamp.toDate()).tz(iataTimeZone);
+
+  // Fetch FoodLog documents for the past week for the specified user
+  const userFoodLogs = await db.collection("FoodLog")
+      .where("authId", "==", authId)
+      .where("createdAt", ">=", oneWeekAgoTimestamp)
+      .get();
+
+  // Init arrays of total food intake for each of the past 7 days
+  const dailyCalories = Array(7).fill(0);
+  const dailyCarbs = Array(7).fill(0);
+  const dailyFat = Array(7).fill(0);
+  const dailyProtein = Array(7).fill(0);
+
+  // Group the logs by day and calculate total food intake
+  userFoodLogs.docs.forEach((doc) => {
+    const {
+      createdAt,
+      calories = 0,
+      carbs = 0,
+      fat = 0,
+      protein = 0,
+    } = doc.data();
+    const dateInUserTimeZone = dayjs(createdAt.toDate()).tz(iataTimeZone);
+    const dayIndex = dateInUserTimeZone.diff(oneWeekAgo, "days");
+    dailyCalories[dayIndex] += calories;
+    dailyCarbs[dayIndex] += carbs;
+    dailyFat[dayIndex] += fat;
+    dailyProtein[dayIndex] += protein;
+  });
+
+  return {dailyCalories, dailyCarbs, dailyFat, dailyProtein};
+};
+
 const getDailyExerciseMinutes = async (authId, iataTimeZone) => {
   // Get one week ago timestamp
   const oneWeekAgoTimestamp = getOneWeekAgoTimestamp(iataTimeZone);
@@ -131,13 +171,13 @@ const getDailyExerciseMinutes = async (authId, iataTimeZone) => {
 
   // Group the logs by day and calculate total exercise time
   userExerciseLogs.docs.forEach((doc) => {
-    const {createdAt, cardio = 0, weightLifting = 0} = doc.data();
+    const {createdAt, duration = 0} = doc.data();
     const dateInUserTimeZone = dayjs(createdAt.toDate()).tz(iataTimeZone);
     const dayIndex = dateInUserTimeZone.diff(oneWeekAgo, "days");
 
     if (dayIndex >= 0 && dayIndex < 7) {
       // Accumulate the total exercise minutes for the day
-      dailyExerciseMinutes[dayIndex] += cardio + weightLifting;
+      dailyExerciseMinutes[dayIndex] += duration;
     }
   });
 
@@ -149,7 +189,7 @@ const getOneWeekAgoTimestamp = (iataTimeZone) => {
   const oneWeekAgo = dayjs()
       .tz(iataTimeZone)
       .startOf("day")
-      .subtract(7, "days");
+      .subtract(6, "days");
 
   // Convert to Firestore Timestamp
   return Timestamp.fromDate(oneWeekAgo.toDate());
