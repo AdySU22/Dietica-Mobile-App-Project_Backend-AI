@@ -209,7 +209,10 @@ exports.finalizeSignup = onCall(async (req) => {
     });
 
     logger.info(`User signed up successfully for email: ${email}`);
-    return {message: "Signup finalized successfully."};
+    return {
+      message: "Signup finalized successfully.",
+      authId: userRecord.uid,
+    };
   } catch (error) {
     logger.error("Error finalizing signup", error);
     throw new HttpsError(

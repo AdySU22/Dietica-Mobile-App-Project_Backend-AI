@@ -12,18 +12,44 @@ exports.getProfile = onCall(async (req) => {
     throw new HttpsError("invalid-argument", "Invalid authId format");
   }
 
-  logger.info("Fetching user profile for authId:", authId); // Log authId
+  logger.info("Fetching user profile and physical data for authId:", authId);
 
   try {
+    // Fetch user profile from Users collection
     const userProfileDoc = await db.collection("Users").doc(authId).get();
     if (!userProfileDoc.exists) {
       throw new HttpsError("not-found", "User profile not found");
     }
-
     const userProfile = userProfileDoc.data();
-    return {profile: userProfile};
+
+    // Fetch user physical data from UserPhysicals collection
+    const userPhysicalSnapshot = await db.collection("UserPhysicals")
+        .where("authId", "==", authId)
+        .get();
+
+    let userPhysicalData = null;
+    if (!userPhysicalSnapshot.empty) {
+      userPhysicalData = userPhysicalSnapshot.docs[0].data();
+    } else {
+      logger.info(`No physical data found for authId: ${authId}`);
+    }
+
+    const profile = {
+      ...userProfile,
+      ...(userPhysicalData ? {
+        weight: userPhysicalData.weight,
+        height: userPhysicalData.height,
+        gender: userPhysicalData.gender,
+        activityLevels: userPhysicalData.activityLevels,
+        nickname: userPhysicalData.firstName||userProfile.nickname || null,
+        birthday: userProfile.birthdate || null,
+      } : {}),
+    };
+
+    logger.info(`User profile data retrieved for authId: ${authId}`);
+    return {profile};
   } catch (error) {
-    logger.error("Error fetching user profile", error);
+    logger.error("Error fetching user profile and physical data", error);
     throw new HttpsError(
         "internal",
         `Failed to fetch user profile: ${error.message}`,
@@ -31,14 +57,13 @@ exports.getProfile = onCall(async (req) => {
   }
 });
 
+
 // Set Profile function
 exports.setProfile = onCall(async (req) => {
   const {
     authId,
     firstName,
-    email,
     birthdate,
-    profilePhotoUrl,
     lastName,
     gender,
     height,
@@ -49,25 +74,33 @@ exports.setProfile = onCall(async (req) => {
   if (
     typeof authId !== "string" ||
     typeof firstName !== "string" ||
-    typeof email !== "string" ||
     typeof birthdate !== "string" ||
-    (profilePhotoUrl && typeof profilePhotoUrl !== "string") ||
-      typeof lastName !== "string" || typeof gender !== "string" ||
-      (height !== undefined && typeof height !== "number") ||
-      (weight !== undefined && typeof weight !== "number")) {
+    typeof lastName !== "string" ||
+    typeof gender !== "string" ||
+    (height !== undefined && typeof height !== "number") ||
+    (weight !== undefined && typeof weight !== "number")
+  ) {
     throw new HttpsError("invalid-argument", "Invalid input data");
   }
 
   try {
-    // Convert birthdate to Firestore Timestamp
-    const birthdateTimestamp = Timestamp.fromDate(new Date(birthdate));
+    // Convert birthdate to Date object
+    const birthdateObj = new Date(birthdate);
+
+    // Format birthdate as "01 Jan 1999"
+    const formattedBirthdate = birthdateObj.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+
+    // Convert formatted birthdate to Firestore Timestamp
+    const birthdateTimestamp = Timestamp.fromDate(new Date(formattedBirthdate));
 
     // Update user profile in Firestore
     await db.collection("Users").doc(authId).set({
       firstName,
-      email,
-      birthdate: birthdateTimestamp, // Store as Timestamp
-      profilePhotoUrl,
+      birthdate: birthdateTimestamp,
       lastName,
       gender,
       height: height !== undefined ? height : null,
