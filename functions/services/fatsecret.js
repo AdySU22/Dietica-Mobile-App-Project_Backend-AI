@@ -3,7 +3,10 @@ const logger = require("firebase-functions/logger");
 const {db} = require("../core/firestore");
 const {Timestamp} = require("firebase-admin/firestore");
 
-exports.fatsecretSearch = onCall(async (request) => {
+exports.fatsecretSearch = onCall({
+  vpcConnector: "dietica-connector",
+  vpcConnectorEgressSettings: "ALL_TRAFFIC",
+}, async (request) => {
   const {query, page, limit} = request.data;
   if (!query || typeof query !== "string") {
     throw new HttpsError("invalid-argument", "query must not empty");
@@ -45,7 +48,10 @@ exports.fatsecretSearch = onCall(async (request) => {
   return data;
 });
 
-exports.fatsecretGet = onCall(async (request) => {
+exports.fatsecretGet = onCall({
+  vpcConnector: "dietica-connector",
+  vpcConnectorEgressSettings: "ALL_TRAFFIC",
+}, async (request) => {
   const {foodId} = request.data;
   if (!foodId || typeof foodId !== "string") {
     throw new HttpsError("invalid-argument", "query must not empty");
