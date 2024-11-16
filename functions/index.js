@@ -35,6 +35,7 @@ const {
 } = require("./services/authServices");
 const {setUserToken} = require("./services/userToken");
 const {getProfile, setProfile} = require("./services/profile");
+const {getProfileV2, setProfileV2} = require("./services/profileV2");
 const {getWaterLog, setWaterLog} = require("./services/WaterLog");
 
 exports.helloWorld = onCall((request) => {
@@ -91,6 +92,9 @@ exports.setUserToken = setUserToken;
 
 exports.setProfile = setProfile;
 exports.getProfile = getProfile;
+
+exports.getProfileV2 = getProfileV2;
+exports.setProfileV2 = setProfileV2;
 
 exports.getWaterLog = getWaterLog;
 exports.setWaterLog = setWaterLog;
