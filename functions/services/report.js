@@ -36,15 +36,13 @@ exports.getReport = onCall(async (req) => {
 });
 
 const getBmi = async (authId) => {
-  const userPhysical = await db.collection("UserPhysical")
-      .where("authId", "==", authId)
-      .limit(1)
-      .get();
-  if (!userPhysical || userPhysical.docs.length <= 0) {
-    throw new HttpsError("not-found", "UserPhysical not found");
+  const userInfo = await db.collection("UserV2").doc(authId).get();
+
+  if (!userInfo.exists) {
+    throw new HttpsError("not-found", "User info not found");
   }
 
-  const {weight, height} = userPhysical.docs[0].data();
+  const {weight, height} = userInfo.data();
   const heightM = height / 100;
   return weight / (heightM * heightM);
 };
@@ -54,7 +52,7 @@ const getAverageWaterWeek = async (authId, iataTimeZone) => {
   const oneWeekAgoTimestamp = getOneWeekAgoTimestamp(iataTimeZone);
 
   // Fetch WaterLog documents for the past week for the specified user
-  const userWaterLogs = await db.collection("WaterLog")
+  const userWaterLogs = await db.collection("WaterLogs")
       .where("authId", "==", authId)
       .where("createdAt", ">=", oneWeekAgoTimestamp)
       .get();
@@ -161,7 +159,7 @@ const getDailyExerciseMinutes = async (authId, iataTimeZone) => {
   const oneWeekAgo = dayjs(oneWeekAgoTimestamp.toDate()).tz(iataTimeZone);
 
   // Fetch ExerciseLog documents for the past week for the specified user
-  const userExerciseLogs = await db.collection("ExerciseLog")
+  const userExerciseLogs = await db.collection("ExerciseLogs")
       .where("authId", "==", authId)
       .where("createdAt", ">=", oneWeekAgoTimestamp)
       .get();
