@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const {db} = require("../core/firestore");
@@ -48,16 +49,16 @@ exports.getExerciseLog = onCall(async (req) => {
   try {
     // Query the ExerciseLogs collection for documents matching the authId
     const snapshot = await db.collection("ExerciseLogs")
-      .where("authId", "==", authId)
-      .orderBy("createdAt", "desc")  // Optionally order by createdAt
-      .get();
+        .where("authId", "==", authId)
+        .orderBy("createdAt", "desc") // Optionally order by createdAt
+        .get();
 
     if (snapshot.empty) {
       return {message: "No exercise logs found for this user"};
     }
 
     // Map snapshot data into an array of exercise logs
-    const exerciseLogs = snapshot.docs.map(doc => ({
+    const exerciseLogs = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
