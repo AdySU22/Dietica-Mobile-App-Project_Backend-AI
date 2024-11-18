@@ -198,20 +198,19 @@ async function getMessagePromptV2(authId) {
  * @return {string} a string summarizing the user's physical information
  */
 async function getUserPhysicalPrompt(authId) {
-  const userPhysical = await db.collection("UserPhysical")
-      .where("authId", "==", authId)
-      .limit(1)
-      .get();
-  if (userPhysical && userPhysical.docs.length <= 0) {
-    throw new Error("UserPhysical not found");
+  const userPhysicalDoc = await db.collection("UserV2").doc(authId).get();
+
+  if (!userPhysicalDoc.exists) {
+    throw new Error("User info not found");
   }
 
-  return `Weight: ${userPhysical.docs[0].data().weight}kg\n` +
-      `Height: ${userPhysical.docs[0].data().height}cm\n` +
-      `Gender: ${userPhysical.docs[0].data().gender}\n` +
-      `Medicine: ${userPhysical.docs[0].data().medicine}\n` +
-      // eslint-disable-next-line max-len
-      `Average Activity Per Week: ${userPhysical.docs[0].data().activityHours} hours`;
+  const userPhysicalData = userPhysicalDoc.data();
+
+  return `Weight: ${userPhysicalData.weight}kg\n` +
+    `Height: ${userPhysicalData.height}cm\n` +
+    `Gender: ${userPhysicalData.gender}\n` +
+    `Medicine: ${userPhysicalData.medicine}\n` +
+    `Activity levels: ${userPhysicalData.activityLevels}`;
 }
 
 /**
@@ -220,7 +219,7 @@ async function getUserPhysicalPrompt(authId) {
  * @return {string} a string summarizing the user's target
  */
 async function getUserTargetPrompt(authId) {
-  const userTarget = await db.collection("UserTarget")
+  const userTarget = await db.collection("UserTargets")
       .where("authId", "==", authId)
       .limit(1)
       .get();
