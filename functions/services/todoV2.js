@@ -175,6 +175,7 @@ async function getMessagePromptV2(authId) {
       `Exercise Log (7-day history)\n${exerciseLogsSummaryPrompt}\n\n` +
       // eslint-disable-next-line max-len
       `Task: Generate personalized recommendations under three categories: Food, Exercise, and Water.\n` +
+      `Please keep it short and concise.\n` +
       `\n` +
       `Food description format (adjust based on user data):\n` +
       `Today Target Calories: // example: 1800 kcal\n` +
@@ -247,8 +248,8 @@ async function getFoodLogsPrompt(authId) {
       .orderBy("createdAt")
       .limit(50)
       .get();
-  if (foodLogs.size < 3) {
-    throw new Error("Need at least 3 food logs for the past week");
+  if (foodLogs.size < 1) {
+    throw new Error("Need at least 1 food log for the past week");
   }
 
   const foodSummary = foodLogs.docs.reduce((summary, foodLog) => {
@@ -264,7 +265,7 @@ async function getFoodLogsPrompt(authId) {
       summary[summary.length - 1].saturatedFat += foodData.saturatedFat;
       summary[summary.length - 1].unsaturatedFat += foodData.unsaturatedFat;
       summary[summary.length - 1].transFat += foodData.transFat;
-      summary[summary.length - 1].cholestrol += foodData.cholestrol;
+      summary[summary.length - 1].cholesterol += foodData.cholesterol;
       summary[summary.length - 1].sodium += foodData.sodium;
       summary[summary.length - 1].carbs += foodData.carbs;
       summary[summary.length - 1].protein += foodData.protein;
@@ -278,7 +279,7 @@ async function getFoodLogsPrompt(authId) {
         saturatedFat: foodData.saturatedFat,
         unsaturatedFat: foodData.unsaturatedFat,
         transFat: foodData.transFat,
-        cholestrol: foodData.cholestrol,
+        cholesterol: foodData.cholesterol,
         sodium: foodData.sodium,
         carbs: foodData.carbs,
         protein: foodData.protein,
@@ -297,7 +298,7 @@ async function getFoodLogsPrompt(authId) {
         `Saturated Fat: ${foodLog.saturatedFat}g; ` +
         `Unsaturated Fat: ${foodLog.unsaturatedFat}g; ` +
         `Trans Fat: ${foodLog.transFat}g; ` +
-        `Cholesterol: ${foodLog.cholestrol}mg; ` +
+        `Cholesterol: ${foodLog.cholesterol}mg; ` +
         `Sodium: ${foodLog.sodium}mg; ` +
         `Carbs: ${foodLog.carbs}g; ` +
         `Protein: ${foodLog.protein}g; ` +

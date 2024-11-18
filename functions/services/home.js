@@ -1,4 +1,4 @@
-const {onCall} = require("firebase-functions/v2/https");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {Timestamp} = require("firebase-admin/firestore");
 const {db} = require("../core/firestore");
 
@@ -10,15 +10,19 @@ dayjs.extend(timezone);
 
 exports.homeFoodTodaySummary = onCall(async (req) => {
   // userTimeZone should be a valid IANA time zone name
-  const {uid, userTimeZone} = req.data;
+  const {authId, iataTimeZone} = req.data;
+
+  if (!authId) {
+    throw new HttpsError("invalid-argument", "authId is required");
+  }
 
   // Get the current and next day at 00:00 in the user's timezone
-  const currentDayStart = dayjs().tz(userTimeZone).startOf("day");
+  const currentDayStart = dayjs().tz(iataTimeZone).startOf("day");
   const nextDayStart = currentDayStart.add(1, "day");
 
   // Query for food logs created today
   const foodLogsToday = await db.collection("FoodLog")
-      .where("authId", "==", uid)
+      .where("authId", "==", authId)
       .where("createdAt", ">=", Timestamp.fromDate(currentDayStart.toDate()))
       .where("createdAt", "<", Timestamp.fromDate(nextDayStart.toDate()))
       .get();
@@ -30,6 +34,9 @@ exports.homeFoodTodaySummary = onCall(async (req) => {
     totalProtein: 0,
     totalFat: 0,
     totalSugar: 0,
+    totalSodium: 0,
+    totalCholesterol: 0,
+    totalFiber: 0,
   };
 
   // Calculate the summary values
@@ -40,6 +47,9 @@ exports.homeFoodTodaySummary = onCall(async (req) => {
     summary.totalProtein += foodLog.protein || 0;
     summary.totalFat += foodLog.fat || 0;
     summary.totalSugar += foodLog.sugar || 0;
+    summary.totalSodium += foodLog.sodium || 0;
+    summary.totalCholesterol += foodLog.cholesterol || 0;
+    summary.totalFiber += foodLog.fiber || 0;
   });
 
   return summary;
