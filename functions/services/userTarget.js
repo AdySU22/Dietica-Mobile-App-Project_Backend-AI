@@ -5,43 +5,56 @@ const {Timestamp} = require("firebase-admin/firestore");
 
 // Callable function to set user target
 exports.setUserTarget = onCall(async (req) => {
-  const {authId, weight, duration} = req.data;
+  const {authId, currentWeight, targetWeight, duration} = req.data;
 
+  // Validate input data
   if (typeof authId !== "string" ||
-    typeof weight !== "number" ||
+    typeof currentWeight !== "number" ||
+    typeof targetWeight !== "number" ||
     typeof duration !== "number") {
+    logger.error("Invalid input data:", req.data);
     throw new HttpsError("invalid-argument", "Invalid input data");
   }
 
+  logger.info("Received data to save/update user target:", req.data);
+
   try {
+    // Check if a user target already exists
     const userTargetSnapshot = await db.collection("UserTargets")
         .where("authId", "==", authId)
         .get();
 
+    // If no existing target, create a new one
     if (userTargetSnapshot.empty) {
       const newDocRef = db.collection("UserTargets").doc();
-
       await newDocRef.set({
         authId,
-        weight,
+        weight: targetWeight,
         duration,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
 
       logger.info(`User target created with ID: ${newDocRef.id}`);
-      return {message: "User target created successfully", id: newDocRef.id};
+      return {
+        message: "User target created successfully",
+        id: newDocRef.id,
+      };
     } else {
+      // Update existing target
       const existingDocRef = userTargetSnapshot.docs[0].ref;
+      logger.info(`Updating target for authId: ${authId}`);
 
       await existingDocRef.update({
-        weight,
+        weight: targetWeight,
         duration,
         updatedAt: Timestamp.now(),
       });
 
       logger.info(`User target updated for authId: ${authId}`);
-      return {message: "User target updated successfully"};
+      return {
+        message: "User target updated successfully",
+      };
     }
   } catch (error) {
     logger.error("Error creating or updating user target", error);
@@ -60,17 +73,21 @@ exports.getUserTarget = onCall(async (req) => {
   logger.info(`Received request for authId: ${authId}`);
 
   try {
+    // Fetch user target data from Firestore
     const userTargetSnapshot = await db.collection("UserTargets")
         .where("authId", "==", authId)
         .get();
 
+    // If no user target found, return a "not-found" error
     if (userTargetSnapshot.empty) {
       logger.info(`No user target found for authId: ${authId}`);
       throw new HttpsError("not-found", "User target not found");
     }
 
+    // Get data from the document
     const userTargetData = userTargetSnapshot.docs[0].data();
     userTargetData.id = userTargetSnapshot.docs[0].id;
+
     logger.info(`User target retrieved successfully for authId: ${authId}`);
     return {
       message: "User target retrieved successfully",
