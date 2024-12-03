@@ -202,7 +202,10 @@ async function getUserPhysicalPrompt(authId) {
   const userPhysicalDoc = await db.collection("UserV2").doc(authId).get();
 
   if (!userPhysicalDoc.exists) {
-    throw new Error("User info not found");
+    throw new HttpsError(
+        "failed-precondition",
+        "Please complete your physical information in profile",
+    );
   }
 
   const userPhysicalData = userPhysicalDoc.data();
@@ -225,7 +228,10 @@ async function getUserTargetPrompt(authId) {
       .limit(1)
       .get();
   if (userTarget && userTarget.docs.length <= 0) {
-    throw new Error("UserTarget not found");
+    throw new HttpsError(
+        "failed-precondition",
+        "Please complete your weight target and duration",
+    );
   }
 
   return `Target Weight: ${userTarget.docs[0].data().weight}kg\n` +
@@ -249,7 +255,10 @@ async function getFoodLogsPrompt(authId) {
       .limit(50)
       .get();
   if (foodLogs.size < 1) {
-    throw new Error("Need at least 1 food log for the past week");
+    throw new HttpsError(
+        "failed-precondition",
+        "Please input at least 1 food log for the past week",
+    );
   }
 
   const foodSummary = foodLogs.docs.reduce((summary, foodLog) => {

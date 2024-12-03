@@ -39,7 +39,10 @@ const getBmi = async (authId) => {
   const userInfo = await db.collection("UserV2").doc(authId).get();
 
   if (!userInfo.exists) {
-    throw new HttpsError("not-found", "User info not found");
+    throw new HttpsError(
+        "failed-precondition",
+        "Please complete your physical information in profile settings.",
+    );
   }
 
   const {weight, height} = userInfo.data();
@@ -67,7 +70,7 @@ const getAverageWaterWeek = async (authId, iataTimeZone) => {
 
   // Check if there is no water data in any of the logs
   if (waterAmounts.length === 0) {
-    throw new HttpsError("internal", "No water log found with water data");
+    return 0;
   }
 
   // Calculate the average water intake
