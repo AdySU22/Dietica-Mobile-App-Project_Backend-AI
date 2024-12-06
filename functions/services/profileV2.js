@@ -80,7 +80,7 @@ exports.setProfileV2 = onCall(async (req) => {
     logger.info(`Updating profile for authId: ${authId}`);
 
     // Update user profile in Firestore
-    const updates = {};
+    const updates = {updatedAt: new Date()};
     if (firstName != null) updates.firstName = firstName;
     if (lastName != null) updates.lastName = lastName;
     if (birthdate != null) {
