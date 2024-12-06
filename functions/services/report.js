@@ -1,6 +1,7 @@
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {Timestamp} = require("firebase-admin/firestore");
 const {db} = require("../core/firestore");
+const {getBmi} = require("../core/buildUserData");
 
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
@@ -17,7 +18,15 @@ exports.getReport = onCall(async (req) => {
     throw new HttpsError("invalid-argument", "iataTimeZone is required");
   }
 
-  const bmi = await getBmi(authId);
+  const user = await db.collection("UserV2").doc(authId).get();
+  if (!user.exists) {
+    throw new HttpsError(
+        "failed-precondition",
+        "Please complete your physical information in profile settings.",
+    );
+  }
+
+  const bmi = getBmi(user.data().weight, user.data().height / 100);
   const averageWater = await getAverageWaterWeek(authId, iataTimeZone);
   const averageCalories = await getAverageCaloriesWeek(authId, iataTimeZone);
   const dailyIntakes = await getDailyIntakes(authId, iataTimeZone);
@@ -26,7 +35,11 @@ exports.getReport = onCall(async (req) => {
   );
 
   const report = {
-    bmi,
+    weight: user.data().weight,
+    height: user.data().height,
+    bmi: bmi.value,
+    bmiCategory: bmi.category,
+    bmiUpdatedAt: user.data().updatedAt,
     averageWater,
     averageCalories,
     dailyIntakes,
@@ -34,21 +47,6 @@ exports.getReport = onCall(async (req) => {
   };
   return report;
 });
-
-const getBmi = async (authId) => {
-  const userInfo = await db.collection("UserV2").doc(authId).get();
-
-  if (!userInfo.exists) {
-    throw new HttpsError(
-        "failed-precondition",
-        "Please complete your physical information in profile settings.",
-    );
-  }
-
-  const {weight, height} = userInfo.data();
-  const heightM = height / 100;
-  return weight / (heightM * heightM);
-};
 
 const getAverageWaterWeek = async (authId, iataTimeZone) => {
   // Get one week ago timestamp
@@ -178,7 +176,7 @@ const getDailyExerciseMinutes = async (authId, iataTimeZone) => {
 
     if (dayIndex >= 0 && dayIndex < 7) {
       // Accumulate the total exercise minutes for the day
-      dailyExerciseMinutes[dayIndex] += duration;
+      dailyExerciseMinutes[dayIndex] += duration / 60;
     }
   });
 

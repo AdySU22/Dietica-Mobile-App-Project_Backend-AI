@@ -1,6 +1,7 @@
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {Timestamp} = require("firebase-admin/firestore");
 const {db} = require("../core/firestore");
+const {getBmi} = require("../core/buildUserData");
 
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
@@ -16,6 +17,16 @@ exports.homeFoodTodaySummary = onCall(async (req) => {
     throw new HttpsError("invalid-argument", "authId is required");
   }
 
+  const user = await db.collection("UserV2").doc(authId).get();
+  if (!user.exists) {
+    throw new HttpsError(
+        "failed-precondition",
+        "Please complete your physical information in profile settings.",
+    );
+  }
+
+  const bmi = getBmi(user.data().weight, user.data().height / 100);
+
   // Get the current and next day at 00:00 in the user's timezone
   const currentDayStart = dayjs().tz(iataTimeZone).startOf("day");
   const nextDayStart = currentDayStart.add(1, "day");
@@ -29,6 +40,9 @@ exports.homeFoodTodaySummary = onCall(async (req) => {
 
   // Initialize summary object
   const summary = {
+    bmi: bmi.value,
+    bmiCategory: bmi.category,
+    bmiUpdatedAt: user.data().updatedAt,
     totalCalories: 0,
     totalCarbs: 0,
     totalProtein: 0,

@@ -4,6 +4,7 @@ const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {Timestamp} = require("firebase-admin/firestore");
 const {db} = require("../core/firestore");
 const {modelTodo} = require("../core/model");
+const {getBmi} = require("../core/buildUserData");
 const logger = require("firebase-functions/logger");
 
 const PromisePool = require("es6-promise-pool");
@@ -210,8 +211,12 @@ async function getUserPhysicalPrompt(authId) {
 
   const userPhysicalData = userPhysicalDoc.data();
 
-  return `Weight: ${userPhysicalData.weight}kg\n` +
+  return `Name: ${userPhysicalData.firstName} ${userPhysicalData.lastName}\n` +
+    `Weight: ${userPhysicalData.weight}kg\n` +
     `Height: ${userPhysicalData.height}cm\n` +
+    `BMI: ${
+      getBmi(userPhysicalData.weight, userPhysicalData.height / 100).value
+    }\n` +
     `Gender: ${userPhysicalData.gender}\n` +
     `Medicine: ${userPhysicalData.medicine}\n` +
     `Activity levels: ${userPhysicalData.activityLevels}`;

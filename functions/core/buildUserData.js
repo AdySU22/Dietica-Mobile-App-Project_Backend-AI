@@ -19,8 +19,12 @@ exports.getUserPhysicalPrompt = async function(authId) {
 
   const userPhysicalData = userPhysicalDoc.data();
 
-  return `Weight: ${userPhysicalData.weight}kg\n` +
+  return `Name: ${userPhysicalData.firstName} ${userPhysicalData.lastName}\n` +
+      `Weight: ${userPhysicalData.weight}kg\n` +
       `Height: ${userPhysicalData.height}cm\n` +
+      `BMI: ${
+        getBmi(userPhysicalData.weight, userPhysicalData.height / 100).value
+      }\n` +
       `Gender: ${userPhysicalData.gender}\n` +
       `Medicine: ${userPhysicalData.medicine}\n` +
       `Activity levels: ${userPhysicalData.activityLevels}`;
@@ -200,3 +204,29 @@ exports.getWaterLogsPrompt = async function(authId) {
     return waterLogPrompts.join("\n");
   }
 };
+
+// eslint-disable-next-line require-jsdoc
+function getBmi(weight, heightM) {
+  const value = weight / (heightM * heightM);
+  const category = getBmiCategory(value);
+  return {
+    value: value,
+    category: category,
+  };
+}
+
+// https://doi.org/10.2147/COPD.S141295
+// eslint-disable-next-line require-jsdoc
+function getBmiCategory(value) {
+  if (value < 18.5) {
+    return "Underweight";
+  } else if (value < 23) {
+    return "Normal";
+  } else if (value < 25) {
+    return "Overweight";
+  } else {
+    return "Obese";
+  }
+}
+
+exports.getBmi = getBmi;
