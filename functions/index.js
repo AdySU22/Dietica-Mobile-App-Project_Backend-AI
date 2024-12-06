@@ -44,6 +44,22 @@ exports.helloWorld = onCall((request) => {
   return "Hello from Firebase!";
 });
 
+exports.checkIp = onCall({
+  vpcConnector: "dietica-connector",
+  vpcConnectorEgressSettings: "ALL_TRAFFIC",
+}, async (request) => {
+  try {
+    const response = await fetch("https://api.ipify.org?format=json");
+    if (!response.ok) {
+      throw new Error(`Failed to fetch IP: ${response.statusText}`);
+    }
+    const ipData = await response.json();
+    return {ip: ipData.ip};
+  } catch (error) {
+    return {error: error.message};
+  }
+});
+
 // This cron schedule runs the function every day at midnight.
 exports.helloScheduler = onSchedule("0 0 * * *", () => {
   logger.info("Hello scheduler!", {structuredData: true});
